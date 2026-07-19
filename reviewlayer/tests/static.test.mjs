@@ -148,6 +148,40 @@ test('runtime contains no external CDN dependency', async () => {
   }
 });
 
+test('icons use a self-hosted Material Symbols font without SVG markup', async () => {
+  const [app, css, font, license] = await Promise.all([
+    read('assets/app.js'),
+    read('assets/reviewlayer.css'),
+    readFile(resolve(appDirectory, 'assets/fonts/material-symbols-outlined.woff2')),
+    read('assets/fonts/MATERIAL-SYMBOLS-LICENSE.txt')
+  ]);
+
+  assert.doesNotMatch(app, /<\/?svg\b/i);
+  assert.match(app, /class="rl-material-icon"/);
+  assert.match(app, /new FontFace\(/);
+  assert.match(app, /document\.fonts\.add\(font\)/);
+  assert.match(app, /await loadMaterialIconFont\(options\.baseUrl\)/);
+  for (const icon of [
+    'add',
+    'arrow_downward',
+    'arrow_forward',
+    'arrow_upward',
+    'close',
+    'menu',
+    'refresh',
+    'settings',
+    'visibility',
+    'visibility_off'
+  ]) {
+    assert.ok(app.includes(`'${icon}'`), `missing Material Symbol: ${icon}`);
+  }
+  assert.match(css, /@font-face/);
+  assert.match(css, /font-family:\s*"ReviewLayer Material Symbols"/);
+  assert.match(css, /fonts\/material-symbols-outlined\.woff2/);
+  assert.ok(font.length > 1000);
+  assert.match(license, /Apache License\s+Version 2\.0/);
+});
+
 test('data and backup directories contain direct-download protection', async () => {
   const [dataRules, backupRules] = await Promise.all([read('data/.htaccess'), read('data/backups/.htaccess')]);
   assert.match(dataRules, /Require all denied/);

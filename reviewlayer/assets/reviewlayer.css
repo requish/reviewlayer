@@ -1,3 +1,11 @@
+@font-face {
+  font-family: "ReviewLayer Material Symbols";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("fonts/material-symbols-outlined.woff2?v=1.0.1") format("woff2");
+}
+
 :host {
   --rl-ink: #18202d;
   --rl-muted: #647084;
@@ -16,6 +24,28 @@
 
 * {
   box-sizing: border-box;
+}
+
+.rl-material-icon {
+  width: 1em;
+  height: 1em;
+  display: inline-grid;
+  place-items: center;
+  overflow: hidden;
+  font-family: "ReviewLayer Material Symbols";
+  font-size: 20px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  user-select: none;
+  -webkit-font-feature-settings: "liga";
+  font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
 }
 
 button,
@@ -82,9 +112,13 @@ button {
   transition: transform .16s ease, box-shadow .16s ease, background .16s ease;
 }
 
-.rl-pin span,
-.rl-temp-pin::first-letter {
+.rl-pin > span,
+.rl-temp-pin > .rl-material-icon {
   transform: rotate(45deg);
+}
+
+.rl-temp-pin > .rl-material-icon {
+  font-size: 18px;
 }
 
 .rl-pin i {
@@ -269,15 +303,9 @@ summary:focus-visible {
   border-radius: 10px;
 }
 
-.rl-button svg,
-.rl-icon-button svg {
-  width: 19px;
-  height: 19px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.8;
+.rl-button > .rl-material-icon,
+.rl-icon-button > .rl-material-icon {
+  font-size: 20px;
 }
 
 .rl-button-primary {
@@ -294,9 +322,8 @@ summary:focus-visible {
   flex: 0 0 20px;
 }
 
-.rl-toolbar [data-action="toggle-add"] > .rl-add-icon svg {
-  width: 20px;
-  height: 20px;
+.rl-toolbar [data-action="toggle-add"] > .rl-add-icon .rl-material-icon {
+  font-size: 20px;
 }
 
 .rl-button-primary:hover {
@@ -387,14 +414,8 @@ summary:focus-visible {
   opacity: 1;
 }
 
-.rl-position-icon svg {
-  width: 17px;
-  height: 17px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 2;
+.rl-position-icon .rl-material-icon {
+  font-size: 17px;
 }
 
 .rl-position-switch {
@@ -697,6 +718,10 @@ summary:focus-visible {
   line-height: 1;
 }
 
+.rl-project-pin-arrow .rl-material-icon {
+  font-size: 18px;
+}
+
 .rl-project-pin-page {
   overflow: hidden;
   color: var(--rl-muted);
@@ -914,7 +939,7 @@ summary:focus-visible {
 }
 
 @media (max-width: 410px) {
-  .rl-visibility svg {
+  .rl-visibility > .rl-material-icon {
     display: none;
   }
 }

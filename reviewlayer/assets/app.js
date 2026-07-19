@@ -10,7 +10,8 @@ import {
   removeReviewLayerParameters
 } from './page-key.js';
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
+const MATERIAL_ICON_FONT_FAMILY = 'ReviewLayer Material Symbols';
 const FILTERS = ['all', 'mobile', 'tablet', 'desktop'];
 const ATTRIBUTION_MANIFEST = Object.freeze({
   payload: 'MkIuRGVzaWduIFdlYiBTdHVkaW98aHR0cHM6Ly93d3cud2ViLjJiLmRlc2lnbi8=',
@@ -78,33 +79,40 @@ function createUuid() {
   return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10).join('')}`;
 }
 
+function materialIcon(name) {
+  return `<span class="rl-material-icon" aria-hidden="true">${escapeHtml(name)}</span>`;
+}
+
+async function loadMaterialIconFont(baseUrl) {
+  if (typeof FontFace !== 'function' || !document.fonts) return;
+  const fontUrl = new URL(`assets/fonts/material-symbols-outlined.woff2?v=${VERSION}`, baseUrl).href;
+  const font = new FontFace(
+    MATERIAL_ICON_FONT_FAMILY,
+    `url("${fontUrl}") format("woff2")`,
+    { style: 'normal', weight: '400' }
+  );
+  document.fonts.add(font);
+  await font.load();
+}
+
 function eyeIcon(hidden = false) {
-  if (hidden) {
-    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 10.7a2 2 0 002.7 2.7M9.9 4.2A10.8 10.8 0 0112 4c5.5 0 9 5.5 9 5.5a15.7 15.7 0 01-2.2 2.7M6.1 6.1C4.1 7.5 3 9.5 3 9.5S6.5 15 12 15c1.2 0 2.3-.3 3.2-.7"/></svg>';
-  }
-  return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12s3.5-5.5 9-5.5 9 5.5 9 5.5-3.5 5.5-9 5.5S3 12 3 12z"/><circle cx="12" cy="12" r="2.5"/></svg>';
+  return materialIcon(hidden ? 'visibility_off' : 'visibility');
 }
 
 function settingsIcon() {
-  return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.6v.2h-4V21a1.7 1.7 0 00-1-1.6 1.7 1.7 0 00-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 00.3-1.9A1.7 1.7 0 003 14H2.8v-4H3a1.7 1.7 0 001.6-1 1.7 1.7 0 00-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 001.9.3A1.7 1.7 0 0010 3v-.2h4V3a1.7 1.7 0 001 1.6 1.7 1.7 0 001.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 00-.3 1.9 1.7 1.7 0 001.6 1h.2v4H21a1.7 1.7 0 00-1.6 1z"/></svg>';
+  return materialIcon('settings');
 }
 
 function menuIcon() {
-  return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+  return materialIcon('menu');
 }
 
 function addModeIcon(active = false) {
-  const path = active
-    ? '<path d="M5 5l14 14M19 5L5 19"/>'
-    : '<path d="M12 4v16M4 12h16"/>';
-  return `<svg viewBox="0 0 24 24" aria-hidden="true">${path}</svg>`;
+  return materialIcon(active ? 'close' : 'add');
 }
 
 function positionIcon(direction) {
-  const path = direction === 'up'
-    ? '<path d="M12 19V5m-5 5 5-5 5 5"/>'
-    : '<path d="M12 5v14m-5-5 5 5 5-5"/>';
-  return `<svg viewBox="0 0 24 24" aria-hidden="true">${path}</svg>`;
+  return materialIcon(direction === 'up' ? 'arrow_upward' : 'arrow_downward');
 }
 
 function detectLanguage(mode) {
@@ -216,7 +224,7 @@ class ReviewLayerApp {
 
     const stylesheet = document.createElement('link');
     stylesheet.rel = 'stylesheet';
-    stylesheet.href = new URL('assets/reviewlayer.css?v=1.0.0', this.baseUrl).href;
+    stylesheet.href = new URL(`assets/reviewlayer.css?v=${VERSION}`, this.baseUrl).href;
     this.shadow.append(stylesheet);
 
     this.root = document.createElement('div');
@@ -232,7 +240,7 @@ class ReviewLayerApp {
       <div class="rl-pins-layer${this.pinsVisible ? '' : ' is-hidden'}" data-role="pins"></div>
       <div class="rl-capture" data-role="capture" hidden></div>
       <div class="rl-highlight" data-role="highlight" hidden></div>
-      <button class="rl-temp-pin" data-role="temp-pin" type="button" hidden aria-label="${escapeHtml(this.t('newPin'))}">+</button>
+      <button class="rl-temp-pin" data-role="temp-pin" type="button" hidden aria-label="${escapeHtml(this.t('newPin'))}">${materialIcon('add')}</button>
       <div class="rl-instruction" data-role="instruction" hidden>${escapeHtml(this.t('addModeInstruction'))}</div>
       <div class="rl-toolbar is-${this.toolbarPosition}" role="toolbar" aria-label="${escapeHtml(this.t('appName'))}">
         <button class="rl-button rl-button-muted rl-visibility" type="button" data-action="toggle-pins" aria-pressed="${this.pinsVisible}" aria-label="${escapeHtml(this.t(this.pinsVisible ? 'hidePins' : 'showPins'))}" title="${escapeHtml(this.t(this.pinsVisible ? 'hidePins' : 'showPins'))}">
@@ -645,7 +653,7 @@ class ReviewLayerApp {
     const title = this.t('pinNumber', { number: pin.pin_number });
     this.panel.innerHTML = this.panelFrame(title, `
       ${hiddenNotice}
-      <div class="rl-status-row"><span class="rl-status is-${escapeHtml(pin.status)}">${escapeHtml(this.t(pin.status === 'resolved' ? 'statusResolved' : 'statusOpen'))}</span><button class="rl-text-button" type="button" data-action="toggle-status">${escapeHtml(this.t(pin.status === 'resolved' ? 'reopen' : 'resolve'))}</button><button class="rl-icon-button rl-small" type="button" data-action="refresh-pin" aria-label="${escapeHtml(this.t('refresh'))}" title="${escapeHtml(this.t('refresh'))}">↻</button></div>
+      <div class="rl-status-row"><span class="rl-status is-${escapeHtml(pin.status)}">${escapeHtml(this.t(pin.status === 'resolved' ? 'statusResolved' : 'statusOpen'))}</span><button class="rl-text-button" type="button" data-action="toggle-status">${escapeHtml(this.t(pin.status === 'resolved' ? 'reopen' : 'resolve'))}</button><button class="rl-icon-button rl-small" type="button" data-action="refresh-pin" aria-label="${escapeHtml(this.t('refresh'))}" title="${escapeHtml(this.t('refresh'))}">${materialIcon('refresh')}</button></div>
       <div class="rl-messages">${messages || `<p class="rl-empty">${escapeHtml(this.t('noMessages'))}</p>`}</div>
       <form data-form="reply" class="rl-form rl-reply-form">
         ${this.authorName ? '' : `<label>${escapeHtml(this.t('yourName'))}<input name="author_name" maxlength="80" required autocomplete="name"></label>`}
@@ -802,7 +810,7 @@ class ReviewLayerApp {
       button.setAttribute('aria-pressed', String(visible));
       button.setAttribute('aria-label', this.t(visible ? 'hidePins' : 'showPins'));
       button.title = this.t(visible ? 'hidePins' : 'showPins');
-      button.querySelector('svg').outerHTML = eyeIcon(!visible);
+      button.querySelector('.rl-material-icon').outerHTML = eyeIcon(!visible);
       button.querySelector('.rl-label-full').textContent = this.t(visible ? 'hidePins' : 'showPins');
     }
     if (visible) this.schedulePositions();
@@ -824,7 +832,7 @@ class ReviewLayerApp {
         const page = this.formatPageLabel(pin.page_url);
         const statusKey = pin.status === 'resolved' ? 'statusResolved' : 'statusOpen';
         return `<button class="rl-project-pin" type="button" data-action="open-project-pin" data-pin-id="${escapeHtml(pin.id)}" aria-label="${escapeHtml(this.t('openProjectPin', { number: pin.pin_number, page }))}">
-          <span class="rl-project-pin-head"><strong>#${escapeHtml(pin.pin_number)}</strong><span class="rl-status is-${escapeHtml(pin.status)}">${escapeHtml(this.t(statusKey))}</span><span class="rl-project-pin-arrow" aria-hidden="true">→</span></span>
+          <span class="rl-project-pin-head"><strong>#${escapeHtml(pin.pin_number)}</strong><span class="rl-status is-${escapeHtml(pin.status)}">${escapeHtml(this.t(statusKey))}</span><span class="rl-project-pin-arrow" aria-hidden="true">${materialIcon('arrow_forward')}</span></span>
           <span class="rl-project-pin-page" title="${escapeHtml(pin.page_url)}">${escapeHtml(page)}</span>
           <span class="rl-project-pin-message">${escapeHtml(pin.first_message || this.t('noMessages'))}</span>
         </button>`;
@@ -1053,7 +1061,7 @@ class ReviewLayerApp {
   }
 
   panelFrame(title, content, bodyClass = '') {
-    return `<header class="rl-panel-header"><div><span class="rl-eyebrow">${escapeHtml(this.t('appName'))}</span><h2>${escapeHtml(title)}</h2></div><button class="rl-icon-button" type="button" data-action="close-panel" aria-label="${escapeHtml(this.t('close'))}" title="${escapeHtml(this.t('close'))}">×</button></header><div class="rl-panel-body${bodyClass ? ` ${escapeHtml(bodyClass)}` : ''}">${content}</div>`;
+    return `<header class="rl-panel-header"><div><span class="rl-eyebrow">${escapeHtml(this.t('appName'))}</span><h2>${escapeHtml(title)}</h2></div><button class="rl-icon-button" type="button" data-action="close-panel" aria-label="${escapeHtml(this.t('close'))}" title="${escapeHtml(this.t('close'))}">${materialIcon('close')}</button></header><div class="rl-panel-body${bodyClass ? ` ${escapeHtml(bodyClass)}` : ''}">${content}</div>`;
   }
 
   closePanel(restoreFocus = true) {
@@ -1136,6 +1144,7 @@ export async function startReviewLayer(options) {
     return;
   }
   const language = detectLanguage(options.language);
+  await loadMaterialIconFont(options.baseUrl);
   const translations = await loadTranslations(options.baseUrl, language);
   const app = new ReviewLayerApp(options, translations, language);
   window.__reviewLayer = app;
