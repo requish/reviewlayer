@@ -10,7 +10,7 @@ import {
   removeReviewLayerParameters
 } from './page-key.js';
 
-const VERSION = '1.1.4';
+const VERSION = '1.1.10';
 const MATERIAL_ICON_FONT_FAMILY = 'ReviewLayer Material Symbols';
 const FILTERS = ['all', 'mobile', 'tablet', 'desktop'];
 const ATTRIBUTION_MANIFEST = Object.freeze({
@@ -36,6 +36,39 @@ function safeGet(storage, key, fallback = '') {
     return storage.getItem(key) ?? fallback;
   } catch {
     return fallback;
+  }
+}
+
+function dispatchInteractionHoverEvents(trigger, active) {
+  if (!(trigger instanceof Element) || !trigger.isConnected) return;
+
+  const relatedTarget = document.body === trigger ? null : document.body;
+  const transitions = active
+    ? [
+        ['pointerover', 'pointer', true],
+        ['pointerenter', 'pointer', false],
+        ['mouseover', 'mouse', true],
+        ['mouseenter', 'mouse', false]
+      ]
+    : [
+        ['pointerout', 'pointer', true],
+        ['pointerleave', 'pointer', false],
+        ['mouseout', 'mouse', true],
+        ['mouseleave', 'mouse', false]
+      ];
+
+  for (const [type, family, bubbles] of transitions) {
+    const EventConstructor = family === 'pointer' && typeof PointerEvent === 'function'
+      ? PointerEvent
+      : MouseEvent;
+    trigger.dispatchEvent(new EventConstructor(type, {
+      bubbles,
+      cancelable: true,
+      composed: true,
+      pointerType: family === 'pointer' ? 'mouse' : undefined,
+      relatedTarget,
+      view: window
+    }));
   }
 }
 
@@ -188,6 +221,9 @@ class ReviewLayerApp {
     this.mutationTimer = 0;
     this.returnFocus = null;
     this.attributionObserver = null;
+    this.hoveredInteractionPinId = '';
+    this.interactionPreview = null;
+    this.interactionPreviewFrame = 0;
     this.anchorResolver = createAnchorResolver();
     this.api.setAccessCode(this.accessCode);
     safeSet(localStorage, 'reviewlayer:author-id', this.authorId);
@@ -276,6 +312,7 @@ class ReviewLayerApp {
     this.shadow.addEventListener('change', (event) => this.handleChange(event));
     this.shadow.addEventListener('submit', (event) => this.handleSubmit(event));
     this.shadow.addEventListener('keydown', (event) => this.handleShadowKeydown(event));
+    document.addEventListener('pointermove', (event) => this.handlePagePointerMove(event), { capture: true, passive: true });
     window.addEventListener('keydown', (event) => this.handleGlobalKeydown(event), true);
     window.addEventListener('scroll', () => this.schedulePositions(), { passive: true });
     window.addEventListener('resize', () => this.schedulePositions(), { passive: true });
@@ -315,7 +352,9 @@ class ReviewLayerApp {
     this.closePanel(false);
     this.currentPageKey = nextKey;
     this.currentPageUrl = nextUrl;
+    this.hoveredInteractionPinId = '';
     this.pins = [];
+    this.syncInteractionPreview();
     this.renderPins();
 
     try {
@@ -400,6 +439,77 @@ class ReviewLayerApp {
       this.tempPin.style.setProperty('--rl-x', `${Math.round(position.x)}px`);
       this.tempPin.style.setProperty('--rl-y', `${Math.round(position.y)}px`);
     }
+  }
+
+  handlePagePointerMove(event) {
+    const pinButton = event.composedPath().find((node) => node instanceof Element
+      && node.matches?.('[data-pin-id], [data-pin-mention-id]'));
+    const nextPinId = pinButton?.dataset.pinId || pinButton?.dataset.pinMentionId || '';
+    if (nextPinId !== this.hoveredInteractionPinId) {
+      this.hoveredInteractionPinId = nextPinId;
+      this.syncInteractionPreview();
+    } else if (nextPinId) {
+      this.reinforceInteractionPreview();
+    }
+    if (this.pins.some((pin) => (pin.interaction_state || pin.anchor?.interaction_state) === 'hover')) {
+      this.schedulePositions();
+    }
+  }
+
+  syncInteractionPreview() {
+    const selectedPin = this.panelType === 'conversation'
+      ? this.pins.find((pin) => pin.id === this.currentPin?.id) || this.currentPin
+      : null;
+    const previewPin = selectedPin
+      || this.pins.find((pin) => pin.id === this.hoveredInteractionPinId);
+    const interactionState = previewPin?.interaction_state || previewPin?.anchor?.interaction_state || '';
+    const trigger = interactionState === 'hover'
+      ? this.anchorResolver.resolveInteractionTrigger(previewPin)
+      : null;
+
+    if (this.interactionPreview?.trigger === trigger) {
+      this.reinforceInteractionPreview(true);
+      return;
+    }
+    this.clearInteractionPreview();
+    if (!trigger) return;
+
+    this.interactionPreview = {
+      trigger,
+      expanded: trigger.getAttribute('aria-expanded')
+    };
+    trigger.setAttribute('data-reviewlayer-interaction-preview', 'true');
+    trigger.setAttribute('aria-expanded', 'true');
+    this.reinforceInteractionPreview(true);
+    this.schedulePositions();
+  }
+
+  reinforceInteractionPreview(delayed = false) {
+    const trigger = this.interactionPreview?.trigger;
+    if (!trigger?.isConnected) return;
+    if (delayed) dispatchInteractionHoverEvents(trigger, true);
+    if (this.interactionPreviewFrame) return;
+
+    this.interactionPreviewFrame = window.requestAnimationFrame(() => {
+      this.interactionPreviewFrame = 0;
+      const currentTrigger = this.interactionPreview?.trigger;
+      if (!currentTrigger?.isConnected) return;
+      dispatchInteractionHoverEvents(currentTrigger, true);
+      this.schedulePositions();
+    });
+  }
+
+  clearInteractionPreview() {
+    const preview = this.interactionPreview;
+    this.interactionPreview = null;
+    window.cancelAnimationFrame(this.interactionPreviewFrame);
+    this.interactionPreviewFrame = 0;
+    if (!preview?.trigger?.isConnected) return;
+    dispatchInteractionHoverEvents(preview.trigger, false);
+    preview.trigger.removeAttribute('data-reviewlayer-interaction-preview');
+    if (preview.expanded === null) preview.trigger.removeAttribute('aria-expanded');
+    else preview.trigger.setAttribute('aria-expanded', preview.expanded);
+    this.schedulePositions();
   }
 
   handleClick(event) {
@@ -667,6 +777,7 @@ class ReviewLayerApp {
     if (!preserveFocus) this.returnFocus = this.shadow.activeElement;
     this.currentPin = this.pins.find((pin) => pin.id === id) || { id };
     this.openPanel('conversation', preserveFocus);
+    this.syncInteractionPreview();
     this.panel.innerHTML = this.panelFrame(this.t('conversation'), `<div class="rl-loading">${escapeHtml(this.t('loading'))}</div>`);
     this.renderPins();
     this.panelController?.abort();
@@ -678,6 +789,7 @@ class ReviewLayerApp {
       this.currentPin.anchor_uncertain = resolvedAnchor.uncertain;
       this.currentPin.interaction_state = this.currentPin.anchor?.interaction_state
         || (resolvedAnchor.mention ? 'hover' : '');
+      this.syncInteractionPreview();
       this.renderConversation();
       this.renderPins();
       if (!preserveFocus) this.focusPanel('[data-action="close-panel"]');
@@ -700,9 +812,12 @@ class ReviewLayerApp {
     const hiddenNotice = this.pinsVisible ? '' : `<div class="rl-notice">${escapeHtml(this.t('pinsAreCurrentlyHidden'))}<button class="rl-text-button" type="button" data-action="show-pins">${escapeHtml(this.t('showPinsInPanel'))}</button></div>`;
     const interactionState = pin.interaction_state || pin.anchor?.interaction_state || '';
     const title = `${this.t('pinNumber', { number: pin.pin_number })}${interactionState === 'hover' ? ' (:hover)' : ''}`;
+    const statusAction = pin.status === 'resolved'
+      ? `<button class="rl-text-button" type="button" data-action="toggle-status">${escapeHtml(this.t('reopen'))}</button>`
+      : `<button class="rl-button rl-status-action" type="button" data-action="toggle-status">${materialIcon('check')}<span>${escapeHtml(this.t('resolve'))}</span></button>`;
     this.panel.innerHTML = this.panelFrame(title, `
       ${hiddenNotice}
-      <div class="rl-status-row"><span class="rl-status is-${escapeHtml(pin.status)}">${escapeHtml(this.t(pin.status === 'resolved' ? 'statusResolved' : 'statusOpen'))}</span><button class="rl-text-button" type="button" data-action="toggle-status">${escapeHtml(this.t(pin.status === 'resolved' ? 'reopen' : 'resolve'))}</button><button class="rl-icon-button rl-small" type="button" data-action="refresh-pin" aria-label="${escapeHtml(this.t('refresh'))}" title="${escapeHtml(this.t('refresh'))}">${materialIcon('refresh')}</button></div>
+      <div class="rl-status-row"><span class="rl-status is-${escapeHtml(pin.status)}">${escapeHtml(this.t(pin.status === 'resolved' ? 'statusResolved' : 'statusOpen'))}</span>${statusAction}<button class="rl-icon-button rl-small" type="button" data-action="refresh-pin" aria-label="${escapeHtml(this.t('refresh'))}" title="${escapeHtml(this.t('refresh'))}">${materialIcon('refresh')}</button></div>
       <div class="rl-messages">${messages || `<p class="rl-empty">${escapeHtml(this.t('noMessages'))}</p>`}</div>
       <form data-form="reply" class="rl-form rl-reply-form">
         ${this.authorName ? '' : `<label>${escapeHtml(this.t('yourName'))}<input name="author_name" maxlength="80" required autocomplete="name"></label>`}
@@ -1120,6 +1235,7 @@ class ReviewLayerApp {
     this.attributionObserver?.disconnect();
     this.panelType = '';
     this.currentPin = null;
+    this.syncInteractionPreview();
     if (this.panel) {
       this.panel.hidden = true;
       this.panel.innerHTML = '';

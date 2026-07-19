@@ -303,6 +303,10 @@ export function createAnchorResolver() {
       cache = new Map();
     },
 
+    resolveInteractionTrigger(pin) {
+      return resolveStoredElement(pin?.anchor?.interaction_trigger);
+    },
+
     resolve(pin) {
       const cached = cache.get(pin.id);
       if (cached?.revision === revision && cached.element?.isConnected) {

@@ -3,7 +3,7 @@
   font-style: normal;
   font-weight: 400;
   font-display: block;
-  src: url("/reviewlayer/assets/fonts/material-symbols-outlined.woff2?v=1.1.4") format("woff2");
+  src: url("/reviewlayer/assets/fonts/material-symbols-outlined.woff2?v=1.1.10") format("woff2");
 }
 
 :root {
@@ -765,12 +765,14 @@ pre {
 }
 
 .demo-hover-menu:hover .demo-hover-panel,
-.demo-hover-menu:focus-within .demo-hover-panel {
+.demo-hover-menu:focus-within .demo-hover-panel,
+.demo-hover-trigger[aria-expanded="true"] + .demo-hover-panel {
   display: block;
 }
 
 .demo-hover-menu:hover .demo-hover-trigger .material-symbol,
-.demo-hover-menu:focus-within .demo-hover-trigger .material-symbol {
+.demo-hover-menu:focus-within .demo-hover-trigger .material-symbol,
+.demo-hover-trigger[aria-expanded="true"] .material-symbol {
   transform: rotate(180deg);
 }
 

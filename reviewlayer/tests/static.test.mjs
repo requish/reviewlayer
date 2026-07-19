@@ -54,7 +54,13 @@ test('pin tooltip stays close to its marker', async () => {
 });
 
 test('hidden hover targets use a parent pin and an exact-position mention marker', async () => {
-  const [app, anchor, css, api] = await Promise.all([read('assets/app.js'), read('assets/anchor.js'), read('assets/reviewlayer.css'), read('api/index.php')]);
+  const [app, anchor, css, api, html] = await Promise.all([
+    read('assets/app.js'),
+    read('assets/anchor.js'),
+    read('assets/reviewlayer.css'),
+    read('api/index.php'),
+    readFile(resolve(projectDirectory, 'index.html'), 'utf8')
+  ]);
   assert.match(anchor, /export function positionAnchor/);
   assert.match(anchor, /fallback_ancestors: fallbackAncestors/);
   assert.match(anchor, /interaction_trigger: interactionTrigger/);
@@ -71,6 +77,19 @@ test('hidden hover targets use a parent pin and an exact-position mention marker
   assert.match(anchor, /expandedState === null \? Boolean\(targetPoint\) : expandedState === 'true'/);
   assert.match(anchor, /mentionAutoVisible: Boolean\(position\.mention && targetPoint && interactionActive\)/);
   assert.match(app, /position\.mention && \(position\.mentionAutoVisible \|\| this\.currentPin\?\.id === pin\.id\)/);
+  assert.match(anchor, /resolveInteractionTrigger\(pin\)/);
+  assert.match(app, /data-reviewlayer-interaction-preview/);
+  assert.match(app, /trigger\.setAttribute\('aria-expanded', 'true'\)/);
+  assert.match(app, /function dispatchInteractionHoverEvents\(trigger, active\)/);
+  assert.match(app, /\['pointerover', 'pointer', true\]/);
+  assert.match(app, /\['mouseover', 'mouse', true\]/);
+  assert.match(app, /\['pointerout', 'pointer', true\]/);
+  assert.match(app, /this\.reinforceInteractionPreview\(true\)/);
+  assert.match(app, /this\.syncInteractionPreview\(\)/);
+  assert.match(app, /document\.addEventListener\('pointermove', \(event\) => this\.handlePagePointerMove\(event\)/);
+  assert.match(app, /this\.schedulePositions\(\)/);
+  assert.doesNotMatch(app, /focusedInteractionPinId/);
+  assert.doesNotMatch(html, /class="demo-hover-trigger"[^>]*aria-expanded="false"/);
   assert.match(app, /--rl-mention-angle/);
   assert.match(app, /this\.tempAnchor\.interaction_state = 'hover'/);
   assert.match(anchor, /const interactionState = detectInteractionState\(element\)/);
@@ -80,6 +99,7 @@ test('hidden hover targets use a parent pin and an exact-position mention marker
   assert.match(app, /class="rl-pin-tooltip-hint"/);
   assert.match(app, /pinTooltipHoverHint/);
   assert.match(css, /\.rl-pin-mention/);
+  assert.match(css, /\.rl-pin\.is-hover[\s\S]*calc\(-75% - 16px\)/);
   assert.match(css, /\.rl-pin-tooltip-hint[\s\S]*margin-top:\s*3px;[\s\S]*padding-top:\s*3px;[\s\S]*border-top:/);
   assert.match(app, /positionAnchor\(this\.tempTarget, this\.tempAnchor\)/);
   assert.match(api, /\$output\['fallback_ancestors'\]/);
@@ -104,6 +124,16 @@ test('Ctrl or Command plus Enter submits comment forms only', async () => {
   assert.match(app, /event\.target instanceof HTMLTextAreaElement/);
   assert.match(app, /form\[data-form="create-pin"\], form\[data-form="reply"\]/);
   assert.match(app, /form\.requestSubmit\(\)/);
+});
+
+test('open pin uses a compact green resolve CTA with a check icon', async () => {
+  const [app, css] = await Promise.all([read('assets/app.js'), read('assets/reviewlayer.css')]);
+  assert.match(app, /rl-button rl-status-action/);
+  assert.doesNotMatch(app, /rl-button rl-button-primary rl-status-action/);
+  assert.match(app, /materialIcon\('check'\)/);
+  assert.match(app, /pin\.status === 'resolved'[\s\S]*rl-text-button[\s\S]*rl-status-action/);
+  assert.match(css, /\.rl-status-action[\s\S]*min-height:\s*34px;[\s\S]*color:\s*#fff;[\s\S]*background:\s*#08775a;/);
+  assert.match(css, /\.rl-status-action:hover[\s\S]*background:\s*#06634b;/);
 });
 
 test('toolbar uses available width and persists its top or bottom position', async () => {
@@ -225,6 +255,7 @@ test('icons use a self-hosted Material Symbols font without SVG markup', async (
     'arrow_downward',
     'arrow_forward',
     'arrow_upward',
+    'check',
     'close',
     'menu',
     'refresh',
