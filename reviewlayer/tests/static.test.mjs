@@ -68,7 +68,9 @@ test('hidden hover targets use a parent pin and an exact-position mention marker
   assert.match(anchor, /mention: mentionDistance >= 12/);
   assert.match(app, /class="rl-pin-mention/);
   assert.match(app, /data-pin-mention-id/);
-  assert.match(app, /position\.mention && this\.currentPin\?\.id === pin\.id/);
+  assert.match(anchor, /expandedState === null \? Boolean\(targetPoint\) : expandedState === 'true'/);
+  assert.match(anchor, /mentionAutoVisible: Boolean\(position\.mention && targetPoint && interactionActive\)/);
+  assert.match(app, /position\.mention && \(position\.mentionAutoVisible \|\| this\.currentPin\?\.id === pin\.id\)/);
   assert.match(app, /--rl-mention-angle/);
   assert.match(app, /this\.tempAnchor\.interaction_state = 'hover'/);
   assert.match(anchor, /const interactionState = detectInteractionState\(element\)/);

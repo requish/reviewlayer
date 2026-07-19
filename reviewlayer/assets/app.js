@@ -10,7 +10,7 @@ import {
   removeReviewLayerParameters
 } from './page-key.js';
 
-const VERSION = '1.1.3';
+const VERSION = '1.1.4';
 const MATERIAL_ICON_FONT_FAMILY = 'ReviewLayer Material Symbols';
 const FILTERS = ['all', 'mobile', 'tablet', 'desktop'];
 const ATTRIBUTION_MANIFEST = Object.freeze({
@@ -384,7 +384,7 @@ class ReviewLayerApp {
 
       const mention = element.nextElementSibling;
       if (mention?.dataset.pinMentionId === pin.id) {
-        const showMention = Boolean(position.mention && this.currentPin?.id === pin.id);
+        const showMention = Boolean(position.mention && (position.mentionAutoVisible || this.currentPin?.id === pin.id));
         mention.hidden = !showMention;
         if (showMention) {
           const arrowAngle = Math.atan2(position.y - position.mention.y, position.x - position.mention.x) * 180 / Math.PI + 90;

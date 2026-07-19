@@ -463,12 +463,15 @@ export function positionAnchor(element, anchor = {}, uncertain = false) {
   if (triggerRect) {
     const triggerX = triggerRect.left + triggerRect.width * Number(anchor.interaction_trigger.relative_x ?? 0.5);
     const triggerY = triggerRect.top + triggerRect.height * Number(anchor.interaction_trigger.relative_y ?? 0.5);
-    return positionHiddenAnchor(
+    const position = positionHiddenAnchor(
       triggerRect,
       targetPoint?.x ?? fallbackPoint?.x ?? triggerX,
       targetPoint?.y ?? fallbackPoint?.y ?? triggerY,
       uncertain
     );
+    const expandedState = interactionTrigger.getAttribute('aria-expanded');
+    const interactionActive = expandedState === null ? Boolean(targetPoint) : expandedState === 'true';
+    return { ...position, mentionAutoVisible: Boolean(position.mention && targetPoint && interactionActive) };
   }
 
   if (targetPoint) return { ...targetPoint, uncertain };
