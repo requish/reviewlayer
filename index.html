@@ -1,277 +1,375 @@
 <!doctype html>
-<html lang="pl">
+<html lang="en">
 <head>
   <script src="/reviewlayer/embed.js" data-project="default" data-lang="en" defer></script>
   <meta name="robots" content="noindex,nofollow">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Prosta strona</title>
-  <style>
-    * {
-      box-sizing: border-box;
-    }
-
-    html {
-      scroll-behavior: smooth;
-    }
-
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      color: #1f2937;
-      background: #f8fafc;
-    }
-
-    .container {
-      width: min(100% - 40px, 1080px);
-      margin-inline: auto;
-    }
-
-    .topbar {
-      background: #ffffff;
-      border-bottom: 1px solid #e5e7eb;
-    }
-
-    .topbar .container {
-      min-height: 72px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 24px;
-    }
-
-    .logo {
-      color: #111827;
-      font-size: 1.25rem;
-      font-weight: 700;
-      text-decoration: none;
-    }
-
-    nav ul {
-      display: flex;
-      gap: 24px;
-      margin: 0;
-      padding: 0;
-      list-style: none;
-    }
-
-    nav a {
-      color: #4b5563;
-      font-weight: 600;
-      text-decoration: none;
-    }
-
-    nav a:hover,
-    nav a:focus-visible {
-      color: #2563eb;
-    }
-
-    .hero {
-      padding: 96px 0;
-      text-align: center;
-      background: linear-gradient(135deg, #eff6ff, #f8fafc);
-    }
-
-    .hero h1 {
-      max-width: 760px;
-      margin: 0 auto 20px;
-      font-size: clamp(2.4rem, 7vw, 4.5rem);
-      line-height: 1.05;
-    }
-
-    .hero p {
-      max-width: 600px;
-      margin: 0 auto 32px;
-      color: #4b5563;
-      font-size: 1.125rem;
-      line-height: 1.7;
-    }
-
-    .button {
-      display: inline-block;
-      padding: 13px 22px;
-      color: #ffffff;
-      font-weight: 600;
-      text-decoration: none;
-      background: #2563eb;
-      border-radius: 8px;
-    }
-
-    .button:hover,
-    .button:focus-visible {
-      background: #1d4ed8;
-    }
-
-    a:focus-visible {
-      outline: 3px solid #93c5fd;
-      outline-offset: 4px;
-    }
-
-    .cards-section,
-    .text-section {
-      padding: 80px 0;
-    }
-
-    .cards-section h2,
-    .text-section h2 {
-      margin: 0 0 12px;
-      font-size: clamp(1.8rem, 4vw, 2.5rem);
-      text-align: center;
-    }
-
-    .section-intro {
-      max-width: 620px;
-      margin: 0 auto 40px;
-      color: #6b7280;
-      line-height: 1.7;
-      text-align: center;
-    }
-
-    .cards {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 24px;
-    }
-
-    .card {
-      padding: 28px;
-      background: #ffffff;
-      border: 1px solid #e5e7eb;
-      border-radius: 14px;
-      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
-    }
-
-    .card-number {
-      width: 40px;
-      height: 40px;
-      display: grid;
-      place-items: center;
-      margin-bottom: 20px;
-      color: #ffffff;
-      font-weight: 700;
-      background: #2563eb;
-      border-radius: 50%;
-    }
-
-    .card h3 {
-      margin: 0 0 10px;
-      font-size: 1.25rem;
-    }
-
-    .card p,
-    .text-section p {
-      margin: 0;
-      color: #6b7280;
-      line-height: 1.7;
-    }
-
-    .text-section {
-      background: #ffffff;
-    }
-
-    .text-section p {
-      max-width: 700px;
-      margin-inline: auto;
-      text-align: center;
-    }
-
-    footer {
-      padding: 28px 0;
-      color: #cbd5e1;
-      text-align: center;
-      background: #111827;
-    }
-
-    footer p {
-      margin: 0;
-    }
-
-    @media (max-width: 720px) {
-      .topbar .container {
-        padding: 18px 0;
-        flex-direction: column;
-      }
-
-      nav ul {
-        gap: 18px;
-      }
-
-      .hero {
-        padding: 72px 0;
-      }
-
-      .cards {
-        grid-template-columns: 1fr;
-      }
-
-      .cards-section,
-      .text-section {
-        padding: 64px 0;
-      }
-    }
-  </style>
+  <meta name="description" content="ReviewLayer is a self-hosted annotation overlay for collecting contextual client feedback directly on website prototypes.">
+  <meta name="theme-color" content="#07070b">
+  <link rel="icon" href="data:,">
+  <title>ReviewLayer — contextual feedback for website prototypes</title>
+  <link rel="stylesheet" href="/assets/reviewlayer-demo.css?v=1.0.1">
+  <script src="/assets/reviewlayer-demo.js?v=1.0.1" defer></script>
 </head>
-<body>
-  <header class="topbar">
-    <div class="container">
-      <a class="logo" href="/">Prosta.</a>
-      <nav aria-label="Główna nawigacja">
-        <ul>
-          <li><a href="/">Start</a></li>
-          <li><a href="oferta.html">Oferta</a></li>
-          <li><a href="#o-nas">O nas</a></li>
-        </ul>
-      </nav>
-    </div>
+<body data-demo-mode="standard">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+
+  <header class="site-header" data-site-header>
+    <nav class="site-nav shell" aria-label="Primary navigation">
+      <a class="brand" href="#top" aria-label="ReviewLayer home">
+        <span class="brand-mark" aria-hidden="true"><span></span></span>
+        <span>ReviewLayer</span>
+      </a>
+
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-menu" aria-label="Open navigation" data-nav-toggle>
+        <span class="material-symbol" aria-hidden="true">menu</span>
+      </button>
+
+      <ul class="nav-links" id="site-menu" data-site-menu>
+        <li><a href="#demo">Live demo</a></li>
+        <li><a href="#workflow">Workflow</a></li>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#integration">Install</a></li>
+        <li><a href="#license">License</a></li>
+      </ul>
+
+      <a class="header-action" href="https://github.com/requish/reviewlayer" target="_blank" rel="noopener noreferrer">
+        <span>GitHub</span>
+        <span class="material-symbol" aria-hidden="true">arrow_forward</span>
+      </a>
+    </nav>
   </header>
 
-  <main>
-    <section class="hero" id="start">
-      <div class="container">
-        <h1>Prosta strona. Jasny przekaz.</h1>
-        <p>Minimalistyczna witryna, która prezentuje najważniejsze informacje bez zbędnych elementów.</p>
-        <a class="button" href="#oferta">Zobacz więcej</a>
+  <main id="main-content">
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <div class="hero-glow hero-glow-one" aria-hidden="true"></div>
+      <div class="hero-glow hero-glow-two" aria-hidden="true"></div>
+      <div class="shell hero-grid">
+        <div class="hero-copy reveal">
+          <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span>Self-hosted prototype review</p>
+          <h1 id="hero-title">Pin client feedback directly to the website you’re building.</h1>
+          <p class="hero-lead">ReviewLayer adds a contextual commenting overlay to any same-origin prototype with one script tag. Clients click, comment and resolve feedback without leaving the page.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#demo">
+              <span>Try the live demo</span>
+              <span class="material-symbol" aria-hidden="true">arrow_downward</span>
+            </a>
+            <a class="button button-secondary" href="https://github.com/requish/reviewlayer" target="_blank" rel="noopener noreferrer">
+              <span>Get it on GitHub</span>
+              <span class="material-symbol" aria-hidden="true">arrow_forward</span>
+            </a>
+          </div>
+          <dl class="hero-facts" aria-label="Product facts">
+            <div><dt>Version</dt><dd>1.0.1</dd></div>
+            <div><dt>Integration</dt><dd>One script</dd></div>
+            <div><dt>Runtime</dt><dd>Self-hosted</dd></div>
+          </dl>
+        </div>
+
+        <figure class="product-visual reveal" aria-labelledby="product-visual-caption">
+          <div class="visual-topline">
+            <span><i aria-hidden="true"></i>Prototype review</span>
+            <span>Live context</span>
+          </div>
+          <canvas data-canvas="product" aria-hidden="true"></canvas>
+          <figcaption id="product-visual-caption">Illustrative preview of pins, an anchored comment and a review thread layered over a website.</figcaption>
+        </figure>
       </div>
     </section>
 
-    <section class="cards-section" id="oferta">
-      <div class="container">
-        <h2>Co oferujemy?</h2>
-        <p class="section-intro">Trzy proste rzeczy, które pomagają szybko stworzyć czytelną obecność w internecie.</p>
+    <aside class="demo-strip" aria-label="Live demo instructions">
+      <div class="shell demo-strip-inner">
+        <span class="material-symbol" aria-hidden="true">add</span>
+        <p><strong>This page is the demo.</strong> Open the ReviewLayer toolbar, choose <em>Add pin</em>, then click any point below.</p>
+        <p class="online-demo-note"><strong>Online sandbox:</strong> up to 5 pins. Demo data is removed periodically.</p>
+      </div>
+    </aside>
 
-        <div class="cards">
-          <article class="card">
-            <div class="card-number">1</div>
-            <h3>Dobry projekt</h3>
-            <p>Czysty układ, odpowiednie odstępy i treść, którą łatwo przeczytać.</p>
+    <section class="section live-demo" id="demo" aria-labelledby="demo-title">
+      <div class="shell">
+        <div class="section-heading reveal">
+          <p class="section-index">01 / Live demo</p>
+          <h2 id="demo-title">Try the review flow on the product page itself.</h2>
+          <p>Nothing below is a screenshot. Add a pin to a card, leave a comment, reply to it and mark the thread as resolved.</p>
+        </div>
+
+        <div class="demo-workspace reveal">
+          <article class="demo-brief">
+            <header class="panel-header">
+              <div>
+                <p class="panel-kicker">Client review / Homepage</p>
+                <h3>Final layout pass</h3>
+              </div>
+              <span class="panel-state"><i aria-hidden="true"></i>Ready for feedback</span>
+            </header>
+
+            <div class="demo-target-grid">
+              <div class="demo-target demo-target-featured">
+                <span class="target-label">Hero message</span>
+                <strong>Make the value clear before the first scroll.</strong>
+                <p>Pin this block if the headline needs another pass.</p>
+              </div>
+              <div class="demo-target">
+                <span class="target-label">Responsive check</span>
+                <strong>Compare spacing across viewports.</strong>
+                <p>ReviewLayer records the creation viewport with each pin.</p>
+              </div>
+              <div class="demo-target">
+                <span class="target-label">Decision</span>
+                <strong>Resolve the thread when the change is approved.</strong>
+                <p>Open and resolved discussions stay easy to scan.</p>
+              </div>
+            </div>
           </article>
 
-          <article class="card">
-            <div class="card-number">2</div>
-            <h3>Szybkie działanie</h3>
-            <p>Lekka strona bez zbędnych dodatków i zewnętrznych zależności.</p>
+          <aside class="demo-guide" aria-labelledby="demo-guide-title">
+            <p class="panel-kicker">Your first pin</p>
+            <h3 id="demo-guide-title">Three small steps</h3>
+            <ol>
+              <li><span>1</span><div><strong>Select Add pin</strong><p>Use the floating ReviewLayer toolbar.</p></div></li>
+              <li><span>2</span><div><strong>Choose a target</strong><p>Click a headline, card or empty space.</p></div></li>
+              <li><span>3</span><div><strong>Write the context</strong><p>Save the first comment to create the pin.</p></div></li>
+            </ol>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="section workflow-section" id="workflow" aria-labelledby="workflow-title">
+      <div class="shell workflow-grid">
+        <div class="workflow-copy reveal">
+          <p class="section-index">02 / Workflow</p>
+          <h2 id="workflow-title">A shorter path from “something feels off” to a clear decision.</h2>
+          <p>Every comment keeps its page, target, viewport and conversation together. That gives designers, developers and clients one shared review context.</p>
+          <ol class="workflow-steps">
+            <li><span>01</span><div><strong>Open the prototype</strong><p>The overlay loads from one deferred script.</p></div></li>
+            <li><span>02</span><div><strong>Pin the exact context</strong><p>The comment is anchored to the selected interface point.</p></div></li>
+            <li><span>03</span><div><strong>Discuss the change</strong><p>Replies and status live in one focused thread.</p></div></li>
+            <li><span>04</span><div><strong>Resolve and move on</strong><p>Project-wide navigation brings any pin back into view.</p></div></li>
+          </ol>
+        </div>
+
+        <figure class="workflow-visual reveal" aria-labelledby="workflow-caption">
+          <div class="canvas-badge">Context preserved</div>
+          <canvas data-canvas="workflow" aria-hidden="true"></canvas>
+          <figcaption id="workflow-caption">A visual flow from prototype page to pinned feedback, conversation and resolution.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section features-section" id="features" aria-labelledby="features-title">
+      <div class="shell">
+        <div class="section-heading section-heading-split reveal">
+          <div>
+            <p class="section-index">03 / Built for real prototypes</p>
+            <h2 id="features-title">Enough structure to finish the review. No new platform to manage.</h2>
+          </div>
+          <p>ReviewLayer is deliberately small: it adds the feedback layer, stores the conversation and stays out of the project underneath.</p>
+        </div>
+
+        <div class="feature-grid">
+          <article class="feature-card feature-card-wide reveal">
+            <div class="feature-copy">
+              <span class="feature-number">01</span>
+              <h3>One script for the whole prototype</h3>
+              <p>The embed discovers its own installation path, works across regular pages and observes History API or hash navigation in SPAs.</p>
+            </div>
+            <div class="script-lines" aria-hidden="true">
+              <span style="--line: 86%"></span><span style="--line: 64%"></span><span style="--line: 94%"></span><span style="--line: 48%"></span>
+              <i class="script-cursor"></i>
+            </div>
           </article>
 
-          <article class="card">
-            <div class="card-number">3</div>
-            <h3>Pełna responsywność</h3>
-            <p>Wygodne przeglądanie na telefonie, tablecie i komputerze.</p>
+          <article class="feature-card feature-card-tall reveal">
+            <span class="feature-number">02</span>
+            <h3>Responsive context stays attached</h3>
+            <p>Filter pins by the viewport in which they were created, while anchored positions adapt to common responsive layout changes.</p>
+            <figure class="coverage-figure" aria-labelledby="coverage-caption">
+              <canvas data-canvas="coverage" aria-hidden="true"></canvas>
+              <figcaption id="coverage-caption">Illustrative viewport coverage, not usage analytics.</figcaption>
+            </figure>
+            <table class="mini-table">
+              <caption>Context stored with a pin</caption>
+              <tbody>
+                <tr><th scope="row">Viewport</th><td>Mobile / Tablet / Desktop</td></tr>
+                <tr><th scope="row">Location</th><td>Page + target</td></tr>
+                <tr><th scope="row">State</th><td>Open / Resolved</td></tr>
+              </tbody>
+            </table>
+          </article>
+
+          <article class="feature-card reveal">
+            <span class="feature-number">03</span>
+            <div class="feature-symbol" aria-hidden="true"><span class="material-symbol" aria-hidden="true">menu</span></div>
+            <h3>Every project pin in one view</h3>
+            <p>Open the project list, jump to another page and restore the selected conversation automatically.</p>
+          </article>
+
+          <article class="feature-card reveal">
+            <span class="feature-number">04</span>
+            <div class="thread-preview" aria-hidden="true"><span></span><span></span><span></span></div>
+            <h3>Conversations, not scattered screenshots</h3>
+            <p>Reply in plain text, refresh a thread, change its status and delete your own feedback when allowed.</p>
+          </article>
+
+          <article class="feature-card feature-card-wide feature-card-storage reveal">
+            <div class="feature-copy">
+              <span class="feature-number">05</span>
+              <h3>Data stays with your prototype</h3>
+              <p>Use SQLite when available or the automatic JSON fallback. Manual backups, protected clearing and a CLI restore tool are included.</p>
+            </div>
+            <dl class="storage-map">
+              <div><dt>Preferred</dt><dd>SQLite</dd></div>
+              <div><dt>Fallback</dt><dd>JSON + file lock</dd></div>
+              <div><dt>Delivery</dt><dd>Your server</dd></div>
+            </dl>
           </article>
         </div>
       </div>
     </section>
 
-    <section class="text-section" id="o-nas">
-      <div class="container">
-        <h2>Mniej znaczy więcej</h2>
-        <p>Ta sekcja zawiera nagłówek i krótki paragraf. Możesz wykorzystać ją do przedstawienia firmy, usługi albo najważniejszej informacji dla odwiedzających.</p>
+    <section class="section integration-section" id="integration" aria-labelledby="integration-title">
+      <div class="shell integration-grid">
+        <div class="integration-copy reveal">
+          <p class="section-index">04 / Installation</p>
+          <h2 id="integration-title">Add the review layer in two lines.</h2>
+          <p>Upload the <code>reviewlayer</code> directory, configure the PHP file and place the embed inside the shared <code>&lt;head&gt;</code>. No build command or package install is required.</p>
+          <ul class="check-list">
+            <li><span aria-hidden="true">01</span>PHP 8.0 or newer</li>
+            <li><span aria-hidden="true">02</span>Writable data and backup directories</li>
+            <li><span aria-hidden="true">03</span>Same-origin installation by default</li>
+          </ul>
+        </div>
+
+        <div class="code-card reveal">
+          <header>
+            <span>prototype.html</span>
+            <button type="button" data-copy-snippet>Copy snippet</button>
+          </header>
+          <pre><code data-install-snippet>&lt;script src="/reviewlayer/embed.js" data-project="client-site" data-lang="en" defer&gt;&lt;/script&gt;
+&lt;meta name="robots" content="noindex,nofollow"&gt;</code></pre>
+          <p><span class="status-dot" aria-hidden="true"></span>The script derives every asset and API address from its own URL.</p>
+        </div>
+      </div>
+
+      <div class="shell requirements-wrap reveal">
+        <div class="requirements-heading">
+          <p class="panel-kicker">Technical profile</p>
+          <h3>Small deployment footprint</h3>
+        </div>
+        <div class="table-scroll" tabindex="0" aria-label="Scrollable technical requirements table">
+          <table class="requirements-table">
+            <thead><tr><th scope="col">Layer</th><th scope="col">Requirement</th><th scope="col">What it avoids</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Server</th><td>PHP 8.0+</td><td>Node.js runtime and build process</td></tr>
+              <tr><th scope="row">Storage</th><td>SQLite or JSON fallback</td><td>External database service</td></tr>
+              <tr><th scope="row">Frontend</th><td>One deferred embed</td><td>Framework integration work</td></tr>
+              <tr><th scope="row">Assets</th><td>Self-hosted</td><td>CDN and SaaS dependency</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section license-section" id="license" aria-labelledby="license-title">
+      <div class="shell license-grid">
+        <div class="license-copy reveal">
+          <p class="section-index">05 / Source-available license</p>
+          <h2 id="license-title">Use it in personal and commercial client projects. Keep the terms intact.</h2>
+          <p>ReviewLayer is royalty-free for personal, educational, internal business and client-project use under the ReviewLayer Source-Available License 1.0.</p>
+          <p class="license-note">Commercial client work is permitted when ReviewLayer is used as an internal collaboration tool, no separate fee is charged for the software and it is not offered as a standalone product or service.</p>
+          <div class="license-actions">
+            <a class="button button-primary" href="LICENSE">Read the complete license</a>
+            <a class="text-link" href="https://www.web.2b.design/" target="_blank" rel="noopener noreferrer">Created by 2B.Design Web Studio <span class="material-symbol" aria-hidden="true">arrow_forward</span></a>
+          </div>
+        </div>
+
+        <div class="license-rules reveal">
+          <article>
+            <span class="rule-label rule-label-yes">Permitted</span>
+            <h3>Build, review and adapt</h3>
+            <ul>
+              <li>Use it for personal and educational work.</li>
+              <li>Use it internally and in client projects.</li>
+              <li>Modify it for those permitted purposes.</li>
+              <li>Redistribute original or modified copies free of charge.</li>
+            </ul>
+          </article>
+          <article>
+            <span class="rule-label rule-label-terms">Conditions</span>
+            <h3>Keep authorship and do not resell it</h3>
+            <ul>
+              <li>Keep the complete LICENSE and visible attribution.</li>
+              <li>Identify redistributed modified copies.</li>
+              <li>Do not sell, rent, resell or sublicense it for a fee.</li>
+              <li>Do not offer paid hosted or SaaS access without written permission.</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section faq-section" aria-labelledby="faq-title">
+      <div class="shell faq-grid">
+        <div class="faq-heading reveal">
+          <p class="section-index">06 / Practical details</p>
+          <h2 id="faq-title">Questions before you add the script.</h2>
+        </div>
+        <div class="faq-list reveal">
+          <details>
+            <summary>Does ReviewLayer modify the prototype markup?<span class="material-symbol faq-icon" aria-hidden="true">add</span></summary>
+            <p>No. It creates an isolated overlay in Shadow DOM and anchors feedback to elements on the page without rewriting the prototype content.</p>
+          </details>
+          <details>
+            <summary>Do I need MySQL or a SaaS account?<span class="material-symbol faq-icon" aria-hidden="true">add</span></summary>
+            <p>No. SQLite is recommended and selected automatically when available; otherwise ReviewLayer uses its JSON storage fallback. No external SaaS account is required.</p>
+          </details>
+          <details>
+            <summary>Can I use it for paid client work?<span class="material-symbol faq-icon" aria-hidden="true">add</span></summary>
+            <p>Yes, for client-project use under the included license when ReviewLayer remains an internal collaboration tool and no separate fee is charged for the software. Selling it or offering paid hosted access requires separate written permission.</p>
+          </details>
+          <details>
+            <summary>What is this tool not intended for?<span class="material-symbol faq-icon" aria-hidden="true">add</span></summary>
+            <p>It is built for prototype review and small-team collaboration. Its safeguards do not replace a full account, identity and audit system for sensitive or high-risk data.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section class="final-cta" aria-labelledby="final-cta-title">
+      <div class="final-cta-glow" aria-hidden="true"></div>
+      <div class="shell final-cta-inner reveal">
+        <p class="eyebrow">Keep the next review in context</p>
+        <h2 id="final-cta-title">Put ReviewLayer on your next prototype.</h2>
+        <p>Download the public package, upload one directory and let the page carry its own feedback.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="https://github.com/requish/reviewlayer" target="_blank" rel="noopener noreferrer">
+            <span>Open ReviewLayer on GitHub</span>
+            <span class="material-symbol" aria-hidden="true">arrow_forward</span>
+          </a>
+          <a class="button button-secondary" href="#demo">Try another pin</a>
+        </div>
       </div>
     </section>
   </main>
 
-  <footer>
-    <div class="container">
-      <p>&copy; 2026 Prosta. Wszystkie prawa zastrzeżone.</p>
+  <footer class="site-footer">
+    <div class="shell footer-grid">
+      <div>
+        <a class="brand" href="#top" aria-label="ReviewLayer home">
+          <span class="brand-mark" aria-hidden="true"><span></span></span>
+          <span>ReviewLayer</span>
+        </a>
+        <p>Contextual website feedback for designers, developers and their clients.</p>
+      </div>
+      <div class="footer-links" aria-label="Footer navigation">
+        <a href="#demo">Live demo</a>
+        <a href="#integration">Install</a>
+        <a href="LICENSE">License</a>
+        <a href="https://github.com/requish/reviewlayer" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </div>
+      <p class="footer-credit">ReviewLayer — Created by <a href="https://www.web.2b.design/" target="_blank" rel="noopener noreferrer">2B.Design Web Studio</a><br>&copy; 2026. All rights reserved.</p>
     </div>
   </footer>
 </body>
