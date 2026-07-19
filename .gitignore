@@ -1,0 +1,12 @@
+.DS_Store
+Thumbs.db
+
+# Local installation settings and runtime data
+reviewlayer/config.php
+reviewlayer/data/*
+!reviewlayer/data/.gitkeep
+!reviewlayer/data/.htaccess
+!reviewlayer/data/backups/
+reviewlayer/data/backups/*
+!reviewlayer/data/backups/.gitkeep
+!reviewlayer/data/backups/.htaccess

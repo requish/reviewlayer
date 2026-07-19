@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <script src="/reviewlayer/embed.js" data-project="default" data-lang="en" defer></script>
+  <meta name="robots" content="noindex,nofollow">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prosta strona</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      color: #1f2937;
+      background: #f8fafc;
+    }
+
+    .container {
+      width: min(100% - 40px, 1080px);
+      margin-inline: auto;
+    }
+
+    .topbar {
+      background: #ffffff;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .topbar .container {
+      min-height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .logo {
+      color: #111827;
+      font-size: 1.25rem;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    nav ul {
+      display: flex;
+      gap: 24px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    nav a {
+      color: #4b5563;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    nav a:hover,
+    nav a:focus-visible {
+      color: #2563eb;
+    }
+
+    .hero {
+      padding: 96px 0;
+      text-align: center;
+      background: linear-gradient(135deg, #eff6ff, #f8fafc);
+    }
+
+    .hero h1 {
+      max-width: 760px;
+      margin: 0 auto 20px;
+      font-size: clamp(2.4rem, 7vw, 4.5rem);
+      line-height: 1.05;
+    }
+
+    .hero p {
+      max-width: 600px;
+      margin: 0 auto 32px;
+      color: #4b5563;
+      font-size: 1.125rem;
+      line-height: 1.7;
+    }
+
+    .button {
+      display: inline-block;
+      padding: 13px 22px;
+      color: #ffffff;
+      font-weight: 600;
+      text-decoration: none;
+      background: #2563eb;
+      border-radius: 8px;
+    }
+
+    .button:hover,
+    .button:focus-visible {
+      background: #1d4ed8;
+    }
+
+    a:focus-visible {
+      outline: 3px solid #93c5fd;
+      outline-offset: 4px;
+    }
+
+    .cards-section,
+    .text-section {
+      padding: 80px 0;
+    }
+
+    .cards-section h2,
+    .text-section h2 {
+      margin: 0 0 12px;
+      font-size: clamp(1.8rem, 4vw, 2.5rem);
+      text-align: center;
+    }
+
+    .section-intro {
+      max-width: 620px;
+      margin: 0 auto 40px;
+      color: #6b7280;
+      line-height: 1.7;
+      text-align: center;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+
+    .card {
+      padding: 28px;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+    }
+
+    .card-number {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      margin-bottom: 20px;
+      color: #ffffff;
+      font-weight: 700;
+      background: #2563eb;
+      border-radius: 50%;
+    }
+
+    .card h3 {
+      margin: 0 0 10px;
+      font-size: 1.25rem;
+    }
+
+    .card p,
+    .text-section p {
+      margin: 0;
+      color: #6b7280;
+      line-height: 1.7;
+    }
+
+    .text-section {
+      background: #ffffff;
+    }
+
+    .text-section p {
+      max-width: 700px;
+      margin-inline: auto;
+      text-align: center;
+    }
+
+    footer {
+      padding: 28px 0;
+      color: #cbd5e1;
+      text-align: center;
+      background: #111827;
+    }
+
+    footer p {
+      margin: 0;
+    }
+
+    @media (max-width: 720px) {
+      .topbar .container {
+        padding: 18px 0;
+        flex-direction: column;
+      }
+
+      nav ul {
+        gap: 18px;
+      }
+
+      .hero {
+        padding: 72px 0;
+      }
+
+      .cards {
+        grid-template-columns: 1fr;
+      }
+
+      .cards-section,
+      .text-section {
+        padding: 64px 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="container">
+      <a class="logo" href="/">Prosta.</a>
+      <nav aria-label="Główna nawigacja">
+        <ul>
+          <li><a href="/">Start</a></li>
+          <li><a href="oferta.html">Oferta</a></li>
+          <li><a href="#o-nas">O nas</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" id="start">
+      <div class="container">
+        <h1>Prosta strona. Jasny przekaz.</h1>
+        <p>Minimalistyczna witryna, która prezentuje najważniejsze informacje bez zbędnych elementów.</p>
+        <a class="button" href="#oferta">Zobacz więcej</a>
+      </div>
+    </section>
+
+    <section class="cards-section" id="oferta">
+      <div class="container">
+        <h2>Co oferujemy?</h2>
+        <p class="section-intro">Trzy proste rzeczy, które pomagają szybko stworzyć czytelną obecność w internecie.</p>
+
+        <div class="cards">
+          <article class="card">
+            <div class="card-number">1</div>
+            <h3>Dobry projekt</h3>
+            <p>Czysty układ, odpowiednie odstępy i treść, którą łatwo przeczytać.</p>
+          </article>
+
+          <article class="card">
+            <div class="card-number">2</div>
+            <h3>Szybkie działanie</h3>
+            <p>Lekka strona bez zbędnych dodatków i zewnętrznych zależności.</p>
+          </article>
+
+          <article class="card">
+            <div class="card-number">3</div>
+            <h3>Pełna responsywność</h3>
+            <p>Wygodne przeglądanie na telefonie, tablecie i komputerze.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="text-section" id="o-nas">
+      <div class="container">
+        <h2>Mniej znaczy więcej</h2>
+        <p>Ta sekcja zawiera nagłówek i krótki paragraf. Możesz wykorzystać ją do przedstawienia firmy, usługi albo najważniejszej informacji dla odwiedzających.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>&copy; 2026 Prosta. Wszystkie prawa zastrzeżone.</p>
+    </div>
+  </footer>
+</body>
+</html>

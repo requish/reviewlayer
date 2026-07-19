@@ -1,0 +1,17 @@
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^api/pins/([0-9a-f-]+)/messages/?$ api/index.php?action=add-message&id=$1 [QSA,L,NC]
+  RewriteRule ^api/pins/([0-9a-f-]+)/status/?$ api/index.php?action=update-status&id=$1 [QSA,L,NC]
+  RewriteRule ^api/pins/([0-9a-f-]+)/?$ api/index.php?action=get-pin&id=$1 [QSA,L,NC]
+  RewriteRule ^api/pins/?$ api/index.php?action=list-pins [QSA,L,NC]
+  RewriteRule ^api/messages/([0-9a-f-]+)/?$ api/index.php?action=delete-message&id=$1 [QSA,L,NC]
+  RewriteRule ^api/admin/clear/?$ api/index.php?action=admin-clear [QSA,L,NC]
+  RewriteRule ^api/health/?$ api/index.php?action=health [QSA,L,NC]
+</IfModule>
+
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "same-origin"
+</IfModule>

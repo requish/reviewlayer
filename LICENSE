@@ -1,0 +1,136 @@
+ReviewLayer Source-Available License 1.0
+
+SPDX-License-Identifier: LicenseRef-ReviewLayer-Source-Available-1.0
+
+Copyright (c) 2026 2B.Design Web Studio. All rights reserved.
+https://www.web.2b.design/
+
+This license is a source-available license. It is not an open-source license
+approved by the Open Source Initiative.
+
+1. Definitions
+
+"Software" means ReviewLayer and all source code, documentation, assets,
+modifications, and derivative works distributed under this license.
+
+"Licensor" means 2B.Design Web Studio.
+
+"Attribution" means the following visible notice and link:
+
+  ReviewLayer — Created by 2B.Design Web Studio
+  https://www.web.2b.design/
+
+"Commercial Redistribution" means selling, sublicensing for a fee, renting,
+leasing, reselling, charging for access to, or offering the Software or its
+substantial functionality as a paid hosted, managed, or software-as-a-service
+product. It also includes bundling the Software with a paid product when the
+Software is a material part of the value being sold.
+
+Commercial Redistribution does not include using the Software as an internal
+collaboration tool while providing web design, development, testing, consulting,
+or other services, provided that no separate fee is charged for the Software
+and the Software is not offered as a standalone product or service.
+
+2. Permission Grant
+
+Subject to all terms of this license, the Licensor grants you a worldwide,
+non-exclusive, royalty-free, non-transferable license to:
+
+a. use and deploy the Software for personal, educational, internal business,
+   and client-project purposes;
+
+b. copy and modify the Software for those permitted purposes; and
+
+c. redistribute original or modified copies free of charge, provided that each
+   copy includes this complete LICENSE file, all copyright notices, and the
+   Attribution required by Section 3.
+
+Recipients of redistributed copies receive their rights directly from the
+Licensor under this license. You may not impose terms that conflict with this
+license. Modified copies must be clearly identified as modified.
+
+3. Required Attribution
+
+The Attribution must remain clearly visible and functional in the Software's
+settings panel. If a modified version has no settings panel, the Attribution
+must appear in an equivalently accessible location within the primary user
+interface.
+
+You may not remove, hide, obscure, disable, alter, or make the Attribution less
+accessible. The link must remain clickable and point to
+https://www.web.2b.design/.
+
+All source-code copyright notices and this LICENSE file must also be retained.
+
+4. Prohibited Uses
+
+Without separate prior written permission from the Licensor, you may not:
+
+a. engage in Commercial Redistribution;
+
+b. sell, license for a fee, rent, lease, or resell the Software or a modified
+   version of it;
+
+c. offer paid access to the Software as a hosted service, managed service,
+   platform feature, or software-as-a-service product;
+
+d. remove or interfere with the Attribution, copyright notices, author
+   information, or this license;
+
+e. claim that you created the original Software or imply endorsement by the
+   Licensor; or
+
+f. use the Licensor's names, logos, domains, or trademarks except as required
+   for the Attribution.
+
+5. Commercial Licensing
+
+Uses prohibited by Section 4 may be permitted under a separate written
+commercial license issued by the Licensor.
+
+6. Ownership
+
+The Software is licensed, not sold. The Licensor retains all right, title, and
+interest in the original Software. This license does not transfer ownership or
+grant trademark rights.
+
+You retain copyright in your original modifications, but those modifications
+may be used and distributed with the Software only under terms that comply with
+this license.
+
+7. Termination
+
+Your rights under this license terminate automatically when you violate any of
+its terms. For a first violation, your rights will be reinstated if you fully
+correct the violation within 30 days after receiving written notice from the
+Licensor. Any later violation terminates your rights permanently unless the
+Licensor agrees otherwise in writing.
+
+Upon termination, you must stop using and distributing the Software and remove
+all copies under your control, except where retention is required by law.
+
+8. Disclaimer of Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE, TITLE, AND NON-INFRINGEMENT. YOU USE THE SOFTWARE AT YOUR OWN RISK.
+
+9. Limitation of Liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE LICENSOR WILL NOT BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR
+FOR ANY LOSS OF DATA, PROFITS, REVENUE, BUSINESS, OR GOODWILL, ARISING FROM THE
+SOFTWARE OR THIS LICENSE.
+
+10. Severability
+
+If any provision of this license is held unenforceable, that provision will be
+limited or removed only to the minimum extent necessary, and the remaining
+provisions will continue in effect.
+
+11. Entire License
+
+This document contains the complete license terms for the Software unless the
+Licensor and the recipient enter into a separate written agreement.
+
+ReviewLayer Source-Available License 1.0 — July 2026
