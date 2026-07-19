@@ -60,11 +60,21 @@ function sanitizeAnchor(array $value): array
                 throw new InvalidArgumentException('anchor.fallback_ancestors.' . $index . '.' . $field . ' is invalid.');
             }
         }
-        $output['fallback_ancestors'][] = [
+        $sanitizedFallback = [
             'selector' => $selector,
             'offset_x' => (float) $fallback['offset_x'],
             'offset_y' => (float) $fallback['offset_y'],
         ];
+        foreach (['relative_x', 'relative_y'] as $field) {
+            if (!isset($fallback[$field])) {
+                continue;
+            }
+            if (!is_numeric($fallback[$field]) || !is_finite((float) $fallback[$field]) || abs((float) $fallback[$field]) > 100) {
+                throw new InvalidArgumentException('anchor.fallback_ancestors.' . $index . '.' . $field . ' is invalid.');
+            }
+            $sanitizedFallback[$field] = (float) $fallback[$field];
+        }
+        $output['fallback_ancestors'][] = $sanitizedFallback;
     }
 
     if (isset($value['interaction_state'])) {
@@ -72,6 +82,29 @@ function sanitizeAnchor(array $value): array
             throw new InvalidArgumentException('anchor.interaction_state is invalid.');
         }
         $output['interaction_state'] = 'hover';
+    }
+    if (isset($value['interaction_trigger'])) {
+        $trigger = Validation::object($value['interaction_trigger'], 'anchor.interaction_trigger', 16384);
+        $relative = [];
+        foreach (['relative_x', 'relative_y'] as $field) {
+            if (!isset($trigger[$field]) || !is_numeric($trigger[$field]) || !is_finite((float) $trigger[$field])) {
+                throw new InvalidArgumentException('anchor.interaction_trigger.' . $field . ' is invalid.');
+            }
+            $relative[$field] = (float) $trigger[$field];
+            if ($relative[$field] < 0 || $relative[$field] > 1) {
+                throw new InvalidArgumentException('anchor.interaction_trigger.' . $field . ' is invalid.');
+            }
+        }
+        $output['interaction_trigger'] = [
+            'selector' => Validation::string($trigger['selector'] ?? null, 'anchor.interaction_trigger.selector', 1, 2048),
+            'target_fingerprint' => Validation::object(
+                $trigger['target_fingerprint'] ?? null,
+                'anchor.interaction_trigger.target_fingerprint',
+                8192
+            ),
+            'relative_x' => $relative['relative_x'],
+            'relative_y' => $relative['relative_y'],
+        ];
     }
     return $output;
 }

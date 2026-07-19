@@ -57,20 +57,29 @@ test('hidden hover targets use a parent pin and an exact-position mention marker
   const [app, anchor, css, api] = await Promise.all([read('assets/app.js'), read('assets/anchor.js'), read('assets/reviewlayer.css'), read('api/index.php')]);
   assert.match(anchor, /export function positionAnchor/);
   assert.match(anchor, /fallback_ancestors: fallbackAncestors/);
+  assert.match(anchor, /interaction_trigger: interactionTrigger/);
+  assert.match(anchor, /findInteractionTrigger/);
+  assert.match(anchor, /rememberInteractionTrigger\(pin, bestElement\)/);
+  assert.match(anchor, /relative_x: \(clientX - ancestorRect\.left\) \/ ancestorRect\.width/);
   assert.match(anchor, /function positionHiddenAnchor/);
+  assert.match(anchor, /resolveStoredElement\(anchor\.interaction_trigger\)/);
+  assert.match(anchor, /if \(triggerRect\)[\s\S]*if \(targetPoint\)/);
+  assert.match(anchor, /bestScore >= 6/);
   assert.match(anchor, /mention: mentionDistance >= 12/);
   assert.match(app, /class="rl-pin-mention/);
   assert.match(app, /data-pin-mention-id/);
   assert.match(app, /position\.mention && this\.currentPin\?\.id === pin\.id/);
   assert.match(app, /--rl-mention-angle/);
   assert.match(app, /this\.tempAnchor\.interaction_state = 'hover'/);
-  assert.match(anchor, /interaction_state: detectInteractionState\(element\)/);
+  assert.match(anchor, /const interactionState = detectInteractionState\(element\)/);
+  assert.match(anchor, /interaction_state: interactionState/);
   assert.match(anchor, /selectorHasHoverDependentTarget/);
   assert.match(app, /interactionState === 'hover' \? ' \(:hover\)' : ''/);
   assert.match(css, /\.rl-pin-mention/);
   assert.match(app, /positionAnchor\(this\.tempTarget, this\.tempAnchor\)/);
   assert.match(api, /\$output\['fallback_ancestors'\]/);
   assert.match(api, /\$output\['interaction_state'\] = 'hover'/);
+  assert.match(api, /\$output\['interaction_trigger'\]/);
 });
 
 test('add mode preserves native page hover and captures only the target click', async () => {

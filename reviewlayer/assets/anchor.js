@@ -215,9 +215,41 @@ function detectInteractionState(element) {
   return '';
 }
 
+function findInteractionTrigger(element, interactionState) {
+  for (let scope = element.parentElement; scope && scope !== document.body; scope = scope.parentElement) {
+    const expandedTriggers = [...scope.querySelectorAll('[aria-haspopup][aria-expanded="true"]')]
+      .filter((candidate) => renderedRect(candidate));
+    if (expandedTriggers.length === 1) return expandedTriggers[0];
+
+    if (interactionState !== 'hover') continue;
+    const triggers = [...scope.querySelectorAll('[aria-haspopup]')]
+      .filter((candidate) => renderedRect(candidate));
+    if (triggers.length === 1) return triggers[0];
+  }
+
+  return null;
+}
+
+function createElementReference(element) {
+  return {
+    selector: createStableSelector(element),
+    target_fingerprint: createFingerprint(element),
+    relative_x: 0.5,
+    relative_y: 0.5
+  };
+}
+
+function rememberInteractionTrigger(pin, element) {
+  if (!pin.anchor || pin.anchor.interaction_trigger || pin.anchor.interaction_state !== 'hover') return;
+  const trigger = findInteractionTrigger(element, 'hover');
+  if (trigger) pin.anchor.interaction_trigger = createElementReference(trigger);
+}
+
 export function captureAnchor(element, clientX, clientY) {
   const rect = element.getBoundingClientRect();
   const documentElement = document.documentElement;
+  const interactionState = detectInteractionState(element);
+  const interactionTrigger = findInteractionTrigger(element, interactionState);
   const fallbackAncestors = [];
   let ancestor = element.parentElement;
 
@@ -227,7 +259,9 @@ export function captureAnchor(element, clientX, clientY) {
       fallbackAncestors.push({
         selector: createStableSelector(ancestor),
         offset_x: clientX - ancestorRect.left,
-        offset_y: clientY - ancestorRect.top
+        offset_y: clientY - ancestorRect.top,
+        relative_x: (clientX - ancestorRect.left) / ancestorRect.width,
+        relative_y: (clientY - ancestorRect.top) / ancestorRect.height
       });
     }
     ancestor = ancestor.parentElement;
@@ -249,7 +283,8 @@ export function captureAnchor(element, clientX, clientY) {
       height: rect.height
     },
     fallback_ancestors: fallbackAncestors,
-    interaction_state: detectInteractionState(element) || undefined,
+    interaction_state: interactionState || undefined,
+    interaction_trigger: interactionTrigger ? createElementReference(interactionTrigger) : undefined,
     viewport_width: window.innerWidth,
     viewport_height: window.innerHeight,
     scroll_x: window.scrollX,
@@ -271,7 +306,7 @@ export function createAnchorResolver() {
     resolve(pin) {
       const cached = cache.get(pin.id);
       if (cached?.revision === revision && cached.element?.isConnected) {
-        return positionAnchor(cached.element, pin.anchor, false);
+        return positionAnchor(cached.element, pin.anchor, cached.uncertain);
       }
 
       const fingerprint = pin.target_fingerprint || {};
@@ -294,7 +329,18 @@ export function createAnchorResolver() {
         }
       }
 
-      if (!bestElement && fingerprint.id) {
+      const exactSelectorMatch = bestElement && (candidates.length === 1 || bestScore >= 6);
+      if (exactSelectorMatch) {
+        const uncertain = bestScore < 6;
+        rememberInteractionTrigger(pin, bestElement);
+        cache.set(pin.id, { element: bestElement, revision, uncertain });
+        return positionAnchor(bestElement, pin.anchor, uncertain);
+      }
+
+      bestElement = null;
+      bestScore = -1;
+
+      if (fingerprint.id) {
         bestElement = document.getElementById(fingerprint.id);
         bestScore = similarity(bestElement, fingerprint);
       }
@@ -310,16 +356,13 @@ export function createAnchorResolver() {
         }
       }
 
-      if (bestElement && bestScore >= 3) {
-        cache.set(pin.id, { element: bestElement, revision });
-        return positionAnchor(bestElement, pin.anchor, bestScore < 6);
+      if (bestElement && bestScore >= 6) {
+        rememberInteractionTrigger(pin, bestElement);
+        cache.set(pin.id, { element: bestElement, revision, uncertain: true });
+        return positionAnchor(bestElement, pin.anchor, true);
       }
 
-      return {
-        x: Number(pin.anchor?.document_x || 0) - window.scrollX,
-        y: Number(pin.anchor?.document_y || 0) - window.scrollY,
-        uncertain: true
-      };
+      return positionAnchor(null, pin.anchor, true);
     }
   };
 }
@@ -348,16 +391,31 @@ function positionHiddenAnchor(ancestorRect, exactX, exactY, uncertain) {
   };
 }
 
-export function positionAnchor(element, anchor = {}, uncertain = false) {
-  const targetRect = renderedRect(element);
-  if (targetRect) {
-    return {
-      x: targetRect.left + targetRect.width * Number(anchor.relative_x ?? 0.5),
-      y: targetRect.top + targetRect.height * Number(anchor.relative_y ?? 0.5),
-      uncertain
-    };
-  }
+function resolveStoredElement(reference) {
+  if (!reference || typeof reference.selector !== 'string') return null;
 
+  let candidates = [];
+  try {
+    candidates = [...document.querySelectorAll(reference.selector)];
+  } catch {
+    return null;
+  }
+  if (candidates.length === 1) return candidates[0];
+
+  const fingerprint = reference.target_fingerprint || {};
+  let bestElement = null;
+  let bestScore = -1;
+  for (const candidate of candidates) {
+    const score = similarity(candidate, fingerprint);
+    if (score > bestScore) {
+      bestElement = candidate;
+      bestScore = score;
+    }
+  }
+  return bestScore >= 6 ? bestElement : null;
+}
+
+function resolveFallbackPoint(anchor) {
   for (const fallback of anchor.fallback_ancestors || []) {
     if (!fallback || typeof fallback.selector !== 'string') continue;
 
@@ -370,21 +428,58 @@ export function positionAnchor(element, anchor = {}, uncertain = false) {
 
     if (!ancestor) continue;
     const ancestorRect = renderedRect(ancestor);
+    if (!ancestorRect) continue;
+
+    const relativeX = Number(fallback.relative_x);
+    const relativeY = Number(fallback.relative_y);
     const offsetX = Number(fallback.offset_x);
     const offsetY = Number(fallback.offset_y);
-    if (!ancestorRect || !Number.isFinite(offsetX) || !Number.isFinite(offsetY)) continue;
+    const x = Number.isFinite(relativeX)
+      ? ancestorRect.left + ancestorRect.width * relativeX
+      : ancestorRect.left + offsetX;
+    const y = Number.isFinite(relativeY)
+      ? ancestorRect.top + ancestorRect.height * relativeY
+      : ancestorRect.top + offsetY;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
 
+    return { x, y, rect: ancestorRect };
+  }
+
+  return null;
+}
+
+export function positionAnchor(element, anchor = {}, uncertain = false) {
+  const targetRect = element ? renderedRect(element) : null;
+  const targetPoint = targetRect
+    ? {
+      x: targetRect.left + targetRect.width * Number(anchor.relative_x ?? 0.5),
+      y: targetRect.top + targetRect.height * Number(anchor.relative_y ?? 0.5)
+    }
+    : null;
+
+  const fallbackPoint = targetPoint ? null : resolveFallbackPoint(anchor);
+  const interactionTrigger = resolveStoredElement(anchor.interaction_trigger);
+  const triggerRect = interactionTrigger ? renderedRect(interactionTrigger) : null;
+  if (triggerRect) {
+    const triggerX = triggerRect.left + triggerRect.width * Number(anchor.interaction_trigger.relative_x ?? 0.5);
+    const triggerY = triggerRect.top + triggerRect.height * Number(anchor.interaction_trigger.relative_y ?? 0.5);
     return positionHiddenAnchor(
-      ancestorRect,
-      ancestorRect.left + offsetX,
-      ancestorRect.top + offsetY,
+      triggerRect,
+      targetPoint?.x ?? fallbackPoint?.x ?? triggerX,
+      targetPoint?.y ?? fallbackPoint?.y ?? triggerY,
       uncertain
     );
   }
 
+  if (targetPoint) return { ...targetPoint, uncertain };
+
+  if (fallbackPoint) {
+    return positionHiddenAnchor(fallbackPoint.rect, fallbackPoint.x, fallbackPoint.y, uncertain);
+  }
+
   const storedX = Number(anchor.document_x) - window.scrollX;
   const storedY = Number(anchor.document_y) - window.scrollY;
-  let visibleAncestor = element.parentElement;
+  let visibleAncestor = element?.parentElement || null;
   let ancestorRect = null;
   while (visibleAncestor && !ancestorRect) {
     ancestorRect = renderedRect(visibleAncestor);
