@@ -1,6 +1,6 @@
 # ReviewLayer
 
-ReviewLayer 1.1.1 is an independent annotation overlay for website prototypes. Clients can attach a note to a page element, discuss it, resolve it, and revisit it on another device. Installation needs no Node.js, build process, MySQL, CDN, or SaaS service.
+ReviewLayer 1.1.3 is an independent annotation overlay for website prototypes. Clients can attach a note to a page element, discuss it, resolve it, and revisit it on another device. Installation needs no Node.js, build process, MySQL, CDN, or SaaS service.
 
 ## Server requirements
 

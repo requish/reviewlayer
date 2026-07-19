@@ -125,6 +125,7 @@
   "closeWithEscape": "Zamknij panel lub anuluj dodawanie: Escape",
   "pinTooltipOpen": "Pinezka otwarta: {message}",
   "pinTooltipResolved": "Pinezka rozwiązana: {message}",
+  "pinTooltipHoverHint": "Element rozwijany (:hover) — rozwiń go, aby zobaczyć dokładne miejsce.",
   "showPinsInPanel": "Pokaż pinezki",
   "diagnosticsTitle": "Diagnostyka ReviewLayer",
   "diagnosticsIntro": "Ta strona sprawdza gotowość instalacji bez ujawniania sekretów.",

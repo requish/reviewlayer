@@ -49,8 +49,8 @@ test('pin visibility disables interaction and is project-scoped', async () => {
 
 test('pin tooltip stays close to its marker', async () => {
   const css = await read('assets/reviewlayer.css');
-  assert.match(css, /\.rl-pin::before\s*\{[\s\S]*?left:\s*35px;[\s\S]*?top:\s*auto;[\s\S]*?bottom:\s*35px;/);
-  assert.match(css, /\.rl-pin::before\s*\{[\s\S]*?transform-origin:\s*left bottom;/);
+  assert.match(css, /\.rl-pin > \.rl-pin-tooltip\s*\{[\s\S]*?left:\s*35px;[\s\S]*?top:\s*auto;[\s\S]*?bottom:\s*35px;/);
+  assert.match(css, /\.rl-pin > \.rl-pin-tooltip\s*\{[\s\S]*?transform-origin:\s*left bottom;/);
 });
 
 test('hidden hover targets use a parent pin and an exact-position mention marker', async () => {
@@ -75,7 +75,10 @@ test('hidden hover targets use a parent pin and an exact-position mention marker
   assert.match(anchor, /interaction_state: interactionState/);
   assert.match(anchor, /selectorHasHoverDependentTarget/);
   assert.match(app, /interactionState === 'hover' \? ' \(:hover\)' : ''/);
+  assert.match(app, /class="rl-pin-tooltip-hint"/);
+  assert.match(app, /pinTooltipHoverHint/);
   assert.match(css, /\.rl-pin-mention/);
+  assert.match(css, /\.rl-pin-tooltip-hint[\s\S]*margin-top:\s*3px;[\s\S]*padding-top:\s*3px;[\s\S]*border-top:/);
   assert.match(app, /positionAnchor\(this\.tempTarget, this\.tempAnchor\)/);
   assert.match(api, /\$output\['fallback_ancestors'\]/);
   assert.match(api, /\$output\['interaction_state'\] = 'hover'/);

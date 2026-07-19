@@ -125,6 +125,7 @@
   "closeWithEscape": "Close a panel or cancel adding: Escape",
   "pinTooltipOpen": "Open pin: {message}",
   "pinTooltipResolved": "Resolved pin: {message}",
+  "pinTooltipHoverHint": "Expandable element (:hover) — open it to see the exact location.",
   "showPinsInPanel": "Show pins",
   "diagnosticsTitle": "ReviewLayer diagnostics",
   "diagnosticsIntro": "This page checks installation readiness without exposing secrets.",

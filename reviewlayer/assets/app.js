@@ -10,7 +10,7 @@ import {
   removeReviewLayerParameters
 } from './page-key.js';
 
-const VERSION = '1.1.1';
+const VERSION = '1.1.3';
 const MATERIAL_ICON_FONT_FAMILY = 'ReviewLayer Material Symbols';
 const FILTERS = ['all', 'mobile', 'tablet', 'desktop'];
 const ATTRIBUTION_MANIFEST = Object.freeze({
@@ -354,9 +354,12 @@ class ReviewLayerApp {
       const firstMessage = (pin.first_message || '').slice(0, 100);
       const tooltipKey = pin.status === 'resolved' ? 'pinTooltipResolved' : 'pinTooltipOpen';
       const tooltip = this.t(tooltipKey, { message: firstMessage });
-      const stateClasses = `${pin.status === 'resolved' ? ' is-resolved' : ''}${this.currentPin?.id === pin.id ? ' is-active' : ''}`;
+      const interactionState = pin.interaction_state || pin.anchor?.interaction_state || '';
+      const stateClasses = `${pin.status === 'resolved' ? ' is-resolved' : ''}${this.currentPin?.id === pin.id ? ' is-active' : ''}${interactionState === 'hover' ? ' is-hover' : ''}`;
       const pinLabel = escapeHtml(this.t('pinNumber', { number: pin.pin_number }));
-      return `<button class="rl-pin${stateClasses}" type="button" data-pin-id="${escapeHtml(pin.id)}" data-tooltip="${escapeHtml(tooltip)}" aria-label="${pinLabel}"><span>${escapeHtml(pin.pin_number)}</span><i aria-hidden="true"></i></button><button class="rl-pin-mention${stateClasses}" type="button" data-pin-mention-id="${escapeHtml(pin.id)}" aria-label="${pinLabel}" hidden>${materialIcon('arrow_upward')}<span>${escapeHtml(pin.pin_number)}</span></button>`;
+      const hoverHint = interactionState === 'hover' ? `<span class="rl-pin-tooltip-hint">${escapeHtml(this.t('pinTooltipHoverHint'))}</span>` : '';
+      const tooltipMarkup = `<span class="rl-pin-tooltip" aria-hidden="true"><span>${escapeHtml(tooltip)}</span>${hoverHint}</span>`;
+      return `<button class="rl-pin${stateClasses}" type="button" data-pin-id="${escapeHtml(pin.id)}" aria-label="${pinLabel}"><span>${escapeHtml(pin.pin_number)}</span><i aria-hidden="true"></i>${tooltipMarkup}</button><button class="rl-pin-mention${stateClasses}" type="button" data-pin-mention-id="${escapeHtml(pin.id)}" aria-label="${pinLabel}" hidden>${materialIcon('arrow_upward')}<span>${escapeHtml(pin.pin_number)}</span></button>`;
     }).join('');
     this.schedulePositions();
   }
