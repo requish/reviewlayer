@@ -2,6 +2,7 @@ Options -Indexes
 
 <IfModule mod_rewrite.c>
   RewriteEngine On
+  RewriteRule ^(?:tests|tools)(?:/|$) - [F,L,NC]
   RewriteRule ^api/pins/([0-9a-f-]+)/messages/?$ api/index.php?action=add-message&id=$1 [QSA,L,NC]
   RewriteRule ^api/pins/([0-9a-f-]+)/status/?$ api/index.php?action=update-status&id=$1 [QSA,L,NC]
   RewriteRule ^api/pins/([0-9a-f-]+)/?$ api/index.php?action=get-pin&id=$1 [QSA,L,NC]
