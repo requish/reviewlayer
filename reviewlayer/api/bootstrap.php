@@ -7,7 +7,7 @@ namespace ReviewLayer;
 use RuntimeException;
 use Throwable;
 
-const REVIEWLAYER_VERSION = '1.0.1';
+const REVIEWLAYER_VERSION = '1.1.0';
 
 require_once __DIR__ . '/StorageInterface.php';
 require_once __DIR__ . '/Validation.php';

@@ -47,6 +47,51 @@ test('pin visibility disables interaction and is project-scoped', async () => {
   assert.match(css, /\.rl-pins-layer\.is-hidden[\s\S]*visibility:\s*hidden[\s\S]*pointer-events:\s*none/);
 });
 
+test('pin tooltip stays close to its marker', async () => {
+  const css = await read('assets/reviewlayer.css');
+  assert.match(css, /\.rl-pin::before\s*\{[\s\S]*?left:\s*35px;[\s\S]*?top:\s*auto;[\s\S]*?bottom:\s*35px;/);
+  assert.match(css, /\.rl-pin::before\s*\{[\s\S]*?transform-origin:\s*left bottom;/);
+});
+
+test('hidden hover targets use a parent pin and an exact-position mention marker', async () => {
+  const [app, anchor, css, api] = await Promise.all([read('assets/app.js'), read('assets/anchor.js'), read('assets/reviewlayer.css'), read('api/index.php')]);
+  assert.match(anchor, /export function positionAnchor/);
+  assert.match(anchor, /fallback_ancestors: fallbackAncestors/);
+  assert.match(anchor, /function positionHiddenAnchor/);
+  assert.match(anchor, /mention: mentionDistance >= 12/);
+  assert.match(app, /class="rl-pin-mention/);
+  assert.match(app, /data-pin-mention-id/);
+  assert.match(app, /position\.mention && this\.currentPin\?\.id === pin\.id/);
+  assert.match(app, /--rl-mention-angle/);
+  assert.match(app, /this\.tempAnchor\.interaction_state = 'hover'/);
+  assert.match(anchor, /interaction_state: detectInteractionState\(element\)/);
+  assert.match(anchor, /selectorHasHoverDependentTarget/);
+  assert.match(app, /interactionState === 'hover' \? ' \(:hover\)' : ''/);
+  assert.match(css, /\.rl-pin-mention/);
+  assert.match(app, /positionAnchor\(this\.tempTarget, this\.tempAnchor\)/);
+  assert.match(api, /\$output\['fallback_ancestors'\]/);
+  assert.match(api, /\$output\['interaction_state'\] = 'hover'/);
+});
+
+test('add mode preserves native page hover and captures only the target click', async () => {
+  const app = await read('assets/app.js');
+  assert.match(app, /document\.addEventListener\('pointermove', this\.captureMove, true\)/);
+  assert.match(app, /document\.addEventListener\('click', this\.captureClick, true\)/);
+  assert.match(app, /event\.composedPath\(\)\.includes\(this\.host\)/);
+  assert.match(app, /event\.stopImmediatePropagation\(\)/);
+  assert.match(app, /this\.captureLayer\.hidden = true/);
+  assert.match(app, /this\.instruction\.hidden = true/);
+  assert.doesNotMatch(app, /this\.captureLayer\.addEventListener\('pointermove'/);
+});
+
+test('Ctrl or Command plus Enter submits comment forms only', async () => {
+  const app = await read('assets/app.js');
+  assert.match(app, /\(event\.ctrlKey \|\| event\.metaKey\)/);
+  assert.match(app, /event\.target instanceof HTMLTextAreaElement/);
+  assert.match(app, /form\[data-form="create-pin"\], form\[data-form="reply"\]/);
+  assert.match(app, /form\.requestSubmit\(\)/);
+});
+
 test('toolbar uses available width and persists its top or bottom position', async () => {
   const [app, css] = await Promise.all([read('assets/app.js'), read('assets/reviewlayer.css')]);
   assert.match(app, /reviewlayer:\$\{this\.projectKey\}:toolbar-position/);

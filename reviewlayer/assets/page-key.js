@@ -29,6 +29,10 @@ export function createCanonicalUrl(locationLike) {
     url.pathname = url.pathname.replace(/\/+$/, '');
   }
 
+  if (url.hash && !url.hash.startsWith('#/') && !url.hash.startsWith('#!')) {
+    url.hash = '';
+  }
+
   return url.href;
 }
 

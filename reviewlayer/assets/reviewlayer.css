@@ -3,7 +3,7 @@
   font-style: normal;
   font-weight: 400;
   font-display: block;
-  src: url("fonts/material-symbols-outlined.woff2?v=1.0.1") format("woff2");
+  src: url("fonts/material-symbols-outlined.woff2?v=1.1.0") format("woff2");
 }
 
 :host {
@@ -164,7 +164,56 @@ button {
   transform: translate(-25%, -75%) rotate(-45deg) scale(1.12);
 }
 
+.rl-pin-mention {
+  position: fixed;
+  left: var(--rl-x, -100px);
+  top: var(--rl-y, -100px);
+  z-index: 19;
+  min-width: 35px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 7px 0 5px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  background: #17202f;
+  border: 1px solid rgba(156, 140, 255, .86);
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(24, 32, 47, .28);
+  cursor: pointer;
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+  transition: transform .16s ease, box-shadow .16s ease, background .16s ease;
+}
+
+.rl-pin-mention > .rl-material-icon {
+  color: #b8adff;
+  font-size: 14px;
+  transform: rotate(var(--rl-mention-angle, 0deg));
+}
+
+.rl-pin-mention.is-resolved {
+  border-color: rgba(96, 112, 131, .9);
+}
+
+.rl-pin-mention.is-resolved > .rl-material-icon {
+  color: #aeb9c6;
+}
+
+.rl-pin-mention:hover,
+.rl-pin-mention.is-active,
+.rl-pin-mention:focus-visible {
+  background: #202a3a;
+  box-shadow: 0 6px 18px rgba(24, 32, 47, .38);
+  transform: translate(-50%, -50%) scale(1.08);
+}
+
 .rl-pin:focus-visible,
+.rl-pin-mention:focus-visible,
 .rl-temp-pin:focus-visible,
 .rl-button:focus-visible,
 .rl-icon-button:focus-visible,
@@ -185,7 +234,8 @@ summary:focus-visible {
   content: attr(data-tooltip);
   position: absolute;
   left: 35px;
-  top: -2px;
+  top: auto;
+  bottom: 35px;
   width: max-content;
   max-width: 240px;
   padding: 8px 10px;
@@ -199,6 +249,7 @@ summary:focus-visible {
   background: #17202f;
   border-radius: 8px;
   opacity: 0;
+  transform-origin: left bottom;
   transform: rotate(45deg) translateY(4px);
   transition: opacity .15s ease, transform .15s ease;
 }

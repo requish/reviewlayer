@@ -154,9 +154,85 @@ function similarity(candidate, fingerprint) {
   return score;
 }
 
+function hasHoverRevealDeclaration(style) {
+  const display = style.getPropertyValue('display').trim();
+  const visibility = style.getPropertyValue('visibility').trim();
+  const opacity = style.getPropertyValue('opacity').trim();
+  const pointerEvents = style.getPropertyValue('pointer-events').trim();
+  const maxHeight = style.getPropertyValue('max-height').trim();
+  const maxWidth = style.getPropertyValue('max-width').trim();
+  return (display && display !== 'none')
+    || visibility === 'visible'
+    || (opacity !== '' && Number(opacity) > 0)
+    || (pointerEvents && pointerEvents !== 'none')
+    || (maxHeight && maxHeight !== '0' && maxHeight !== '0px')
+    || (maxWidth && maxWidth !== '0' && maxWidth !== '0px');
+}
+
+function selectorHasHoverDependentTarget(selector) {
+  const hoverIndex = selector.indexOf(':hover');
+  if (hoverIndex < 0) return false;
+  const afterHover = selector.slice(hoverIndex + ':hover'.length);
+  return /^\s/.test(afterHover) || /^[>+~]/.test(afterHover);
+}
+
+function ruleMarksHoverInteraction(rule, element) {
+  if (!rule?.style || typeof rule.selectorText !== 'string' || !hasHoverRevealDeclaration(rule.style)) return false;
+  for (const selector of rule.selectorText.split(',')) {
+    const trimmedSelector = selector.trim();
+    if (!selectorHasHoverDependentTarget(trimmedSelector)) continue;
+    for (let candidate = element; candidate; candidate = candidate.parentElement) {
+      try {
+        if (candidate.matches(trimmedSelector)) return true;
+      } catch {
+        break;
+      }
+    }
+  }
+  return false;
+}
+
+function rulesMarkHoverInteraction(rules, element) {
+  for (const rule of rules || []) {
+    if (ruleMarksHoverInteraction(rule, element)) return true;
+    try {
+      if (rule.cssRules && rulesMarkHoverInteraction(rule.cssRules, element)) return true;
+    } catch {
+      // Cross-origin and protected stylesheets are intentionally ignored.
+    }
+  }
+  return false;
+}
+
+function detectInteractionState(element) {
+  for (const stylesheet of document.styleSheets) {
+    try {
+      if (rulesMarkHoverInteraction(stylesheet.cssRules, element)) return 'hover';
+    } catch {
+      // A page may contain external stylesheets whose rules cannot be inspected.
+    }
+  }
+  return '';
+}
+
 export function captureAnchor(element, clientX, clientY) {
   const rect = element.getBoundingClientRect();
   const documentElement = document.documentElement;
+  const fallbackAncestors = [];
+  let ancestor = element.parentElement;
+
+  while (ancestor && fallbackAncestors.length < 8) {
+    const ancestorRect = ancestor.getBoundingClientRect();
+    if (ancestorRect.width > 0 && ancestorRect.height > 0) {
+      fallbackAncestors.push({
+        selector: createStableSelector(ancestor),
+        offset_x: clientX - ancestorRect.left,
+        offset_y: clientY - ancestorRect.top
+      });
+    }
+    ancestor = ancestor.parentElement;
+  }
+
   return {
     target_selector: createStableSelector(element),
     target_fingerprint: createFingerprint(element),
@@ -172,6 +248,8 @@ export function captureAnchor(element, clientX, clientY) {
       width: rect.width,
       height: rect.height
     },
+    fallback_ancestors: fallbackAncestors,
+    interaction_state: detectInteractionState(element) || undefined,
     viewport_width: window.innerWidth,
     viewport_height: window.innerHeight,
     scroll_x: window.scrollX,
@@ -193,7 +271,7 @@ export function createAnchorResolver() {
     resolve(pin) {
       const cached = cache.get(pin.id);
       if (cached?.revision === revision && cached.element?.isConnected) {
-        return positionFor(cached.element, pin, false);
+        return positionAnchor(cached.element, pin.anchor, false);
       }
 
       const fingerprint = pin.target_fingerprint || {};
@@ -234,7 +312,7 @@ export function createAnchorResolver() {
 
       if (bestElement && bestScore >= 3) {
         cache.set(pin.id, { element: bestElement, revision });
-        return positionFor(bestElement, pin, bestScore < 6);
+        return positionAnchor(bestElement, pin.anchor, bestScore < 6);
       }
 
       return {
@@ -246,11 +324,81 @@ export function createAnchorResolver() {
   };
 }
 
-function positionFor(element, pin, uncertain) {
+function renderedRect(element) {
   const rect = element.getBoundingClientRect();
+  const style = window.getComputedStyle(element);
+  if (rect.width <= 0 || rect.height <= 0 || style.display === 'none' || style.visibility === 'hidden') return null;
+  return rect;
+}
+
+function clamp(value, minimum, maximum) {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function positionHiddenAnchor(ancestorRect, exactX, exactY, uncertain) {
+  const x = clamp(exactX, ancestorRect.left, ancestorRect.right);
+  const y = clamp(exactY, ancestorRect.top, ancestorRect.bottom);
+  const mentionDistance = Math.hypot(exactX - x, exactY - y);
+
   return {
-    x: rect.left + rect.width * Number(pin.anchor?.relative_x ?? 0.5),
-    y: rect.top + rect.height * Number(pin.anchor?.relative_y ?? 0.5),
-    uncertain
+    x,
+    y,
+    uncertain,
+    mention: mentionDistance >= 12 ? { x: exactX, y: exactY } : null
   };
+}
+
+export function positionAnchor(element, anchor = {}, uncertain = false) {
+  const targetRect = renderedRect(element);
+  if (targetRect) {
+    return {
+      x: targetRect.left + targetRect.width * Number(anchor.relative_x ?? 0.5),
+      y: targetRect.top + targetRect.height * Number(anchor.relative_y ?? 0.5),
+      uncertain
+    };
+  }
+
+  for (const fallback of anchor.fallback_ancestors || []) {
+    if (!fallback || typeof fallback.selector !== 'string') continue;
+
+    let ancestor = null;
+    try {
+      ancestor = document.querySelector(fallback.selector);
+    } catch {
+      ancestor = null;
+    }
+
+    if (!ancestor) continue;
+    const ancestorRect = renderedRect(ancestor);
+    const offsetX = Number(fallback.offset_x);
+    const offsetY = Number(fallback.offset_y);
+    if (!ancestorRect || !Number.isFinite(offsetX) || !Number.isFinite(offsetY)) continue;
+
+    return positionHiddenAnchor(
+      ancestorRect,
+      ancestorRect.left + offsetX,
+      ancestorRect.top + offsetY,
+      uncertain
+    );
+  }
+
+  const storedX = Number(anchor.document_x) - window.scrollX;
+  const storedY = Number(anchor.document_y) - window.scrollY;
+  let visibleAncestor = element.parentElement;
+  let ancestorRect = null;
+  while (visibleAncestor && !ancestorRect) {
+    ancestorRect = renderedRect(visibleAncestor);
+    if (!ancestorRect) visibleAncestor = visibleAncestor.parentElement;
+  }
+
+  if (ancestorRect && Number.isFinite(storedX) && Number.isFinite(storedY)) {
+    return positionHiddenAnchor(ancestorRect, storedX, storedY, uncertain);
+  }
+  if (Number.isFinite(storedX) && Number.isFinite(storedY)) {
+    return { x: storedX, y: storedY, uncertain };
+  }
+
+  return ancestorRect
+    ? { x: ancestorRect.left + ancestorRect.width / 2, y: ancestorRect.top + ancestorRect.height / 2, uncertain }
+    : { x: 0, y: 0, uncertain };
 }

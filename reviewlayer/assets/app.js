@@ -1,5 +1,5 @@
 import { ApiClient, ApiError } from './api-client.js';
-import { captureAnchor, createAnchorResolver } from './anchor.js';
+import { captureAnchor, createAnchorResolver, positionAnchor } from './anchor.js';
 import {
   createPinNavigationUrl,
   createCanonicalUrl,
@@ -10,7 +10,7 @@ import {
   removeReviewLayerParameters
 } from './page-key.js';
 
-const VERSION = '1.0.1';
+const VERSION = '1.1.0';
 const MATERIAL_ICON_FONT_FAMILY = 'ReviewLayer Material Symbols';
 const FILTERS = ['all', 'mobile', 'tablet', 'desktop'];
 const ATTRIBUTION_MANIFEST = Object.freeze({
@@ -354,7 +354,9 @@ class ReviewLayerApp {
       const firstMessage = (pin.first_message || '').slice(0, 100);
       const tooltipKey = pin.status === 'resolved' ? 'pinTooltipResolved' : 'pinTooltipOpen';
       const tooltip = this.t(tooltipKey, { message: firstMessage });
-      return `<button class="rl-pin${pin.status === 'resolved' ? ' is-resolved' : ''}${this.currentPin?.id === pin.id ? ' is-active' : ''}" type="button" data-pin-id="${escapeHtml(pin.id)}" data-tooltip="${escapeHtml(tooltip)}" aria-label="${escapeHtml(this.t('pinNumber', { number: pin.pin_number }))}"><span>${escapeHtml(pin.pin_number)}</span><i aria-hidden="true"></i></button>`;
+      const stateClasses = `${pin.status === 'resolved' ? ' is-resolved' : ''}${this.currentPin?.id === pin.id ? ' is-active' : ''}`;
+      const pinLabel = escapeHtml(this.t('pinNumber', { number: pin.pin_number }));
+      return `<button class="rl-pin${stateClasses}" type="button" data-pin-id="${escapeHtml(pin.id)}" data-tooltip="${escapeHtml(tooltip)}" aria-label="${pinLabel}"><span>${escapeHtml(pin.pin_number)}</span><i aria-hidden="true"></i></button><button class="rl-pin-mention${stateClasses}" type="button" data-pin-mention-id="${escapeHtml(pin.id)}" aria-label="${pinLabel}" hidden>${materialIcon('arrow_upward')}<span>${escapeHtml(pin.pin_number)}</span></button>`;
     }).join('');
     this.schedulePositions();
   }
@@ -376,14 +378,24 @@ class ReviewLayerApp {
       element.style.setProperty('--rl-x', `${Math.round(position.x)}px`);
       element.style.setProperty('--rl-y', `${Math.round(position.y)}px`);
       element.classList.toggle('is-uncertain', position.uncertain);
+
+      const mention = element.nextElementSibling;
+      if (mention?.dataset.pinMentionId === pin.id) {
+        const showMention = Boolean(position.mention && this.currentPin?.id === pin.id);
+        mention.hidden = !showMention;
+        if (showMention) {
+          const arrowAngle = Math.atan2(position.y - position.mention.y, position.x - position.mention.x) * 180 / Math.PI + 90;
+          mention.style.setProperty('--rl-x', `${Math.round(position.mention.x)}px`);
+          mention.style.setProperty('--rl-y', `${Math.round(position.mention.y)}px`);
+          mention.style.setProperty('--rl-mention-angle', `${Math.round(arrowAngle)}deg`);
+        }
+      }
     }
 
     if (this.tempAnchor && this.tempTarget?.isConnected) {
-      const rect = this.tempTarget.getBoundingClientRect();
-      const x = rect.left + rect.width * this.tempAnchor.relative_x;
-      const y = rect.top + rect.height * this.tempAnchor.relative_y;
-      this.tempPin.style.setProperty('--rl-x', `${Math.round(x)}px`);
-      this.tempPin.style.setProperty('--rl-y', `${Math.round(y)}px`);
+      const position = positionAnchor(this.tempTarget, this.tempAnchor);
+      this.tempPin.style.setProperty('--rl-x', `${Math.round(position.x)}px`);
+      this.tempPin.style.setProperty('--rl-y', `${Math.round(position.y)}px`);
     }
   }
 
@@ -419,8 +431,8 @@ class ReviewLayerApp {
       return;
     }
 
-    const pinButton = event.target.closest('[data-pin-id]');
-    if (pinButton) this.openConversation(pinButton.dataset.pinId);
+    const pinButton = event.target.closest('[data-pin-id], [data-pin-mention-id]');
+    if (pinButton) this.openConversation(pinButton.dataset.pinId || pinButton.dataset.pinMentionId);
   }
 
   handleChange(event) {
@@ -458,6 +470,21 @@ class ReviewLayerApp {
   }
 
   handleShadowKeydown(event) {
+    const submitShortcut = (event.ctrlKey || event.metaKey)
+      && !event.altKey
+      && !event.shiftKey
+      && !event.repeat
+      && !event.isComposing
+      && event.key === 'Enter';
+    if (submitShortcut && event.target instanceof HTMLTextAreaElement) {
+      const form = event.target.closest('form[data-form="create-pin"], form[data-form="reply"]');
+      if (form) {
+        event.preventDefault();
+        form.requestSubmit();
+        return;
+      }
+    }
+
     if (event.key !== 'Tab' || !this.panelType || this.panel.hidden) return;
     const focusable = [...this.panel.querySelectorAll('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href]')];
     if (!focusable.length) return;
@@ -478,13 +505,20 @@ class ReviewLayerApp {
     this.tempAnchor = null;
     this.tempTarget = null;
     this.setAddModeUi(true);
-    this.captureLayer.addEventListener('pointermove', this.captureMove = (event) => this.updateHighlight(event));
-    this.captureLayer.addEventListener('click', this.captureClick = (event) => this.capturePoint(event), { once: true });
+    this.captureMove = (event) => this.updateHighlight(event);
+    this.captureClick = (event) => {
+      if (event.composedPath().includes(this.host)) return;
+      this.capturePoint(event);
+    };
+    document.addEventListener('pointermove', this.captureMove, true);
+    document.addEventListener('click', this.captureClick, true);
   }
 
   setAddModeUi(active) {
-    this.captureLayer.hidden = !active;
-    this.instruction.hidden = !active;
+    // Keep the page as the pointer target so native :hover states and
+    // JavaScript-driven flyouts can still open while a pin is being placed.
+    this.captureLayer.hidden = true;
+    this.instruction.hidden = true;
     const addButton = this.root.querySelector('[data-action="toggle-add"]');
     if (addButton) {
       addButton.querySelector('.rl-add-icon').innerHTML = addModeIcon(active);
@@ -494,15 +528,14 @@ class ReviewLayerApp {
     }
   }
 
-  elementBelowCapture(clientX, clientY) {
-    this.captureLayer.style.pointerEvents = 'none';
+  elementAtPoint(clientX, clientY) {
     const element = document.elementFromPoint(clientX, clientY);
-    this.captureLayer.style.pointerEvents = '';
     return element && element !== this.host ? element : document.body;
   }
 
   updateHighlight(event) {
-    const target = this.elementBelowCapture(event.clientX, event.clientY);
+    if (!this.adding || event.composedPath().includes(this.host)) return;
+    const target = this.elementAtPoint(event.clientX, event.clientY);
     const rect = target.getBoundingClientRect();
     this.highlight.hidden = false;
     this.highlight.style.setProperty('--rl-left', `${rect.left}px`);
@@ -514,9 +547,11 @@ class ReviewLayerApp {
   capturePoint(event) {
     event.preventDefault();
     event.stopPropagation();
-    const target = this.elementBelowCapture(event.clientX, event.clientY);
+    event.stopImmediatePropagation();
+    const target = this.elementAtPoint(event.clientX, event.clientY);
     this.tempTarget = target;
     this.tempAnchor = captureAnchor(target, event.clientX, event.clientY);
+    this.removeAddListeners();
     this.adding = false;
     this.captureLayer.hidden = true;
     this.instruction.hidden = true;
@@ -527,11 +562,15 @@ class ReviewLayerApp {
     this.openCreatePanel();
   }
 
-  cancelAdd() {
-    if (this.captureMove) this.captureLayer?.removeEventListener('pointermove', this.captureMove);
-    if (this.captureClick) this.captureLayer?.removeEventListener('click', this.captureClick);
+  removeAddListeners() {
+    if (this.captureMove) document.removeEventListener('pointermove', this.captureMove, true);
+    if (this.captureClick) document.removeEventListener('click', this.captureClick, true);
     this.captureMove = null;
     this.captureClick = null;
+  }
+
+  cancelAdd() {
+    this.removeAddListeners();
     this.adding = false;
     this.tempAnchor = null;
     this.tempTarget = null;
@@ -567,6 +606,9 @@ class ReviewLayerApp {
     this.setFormBusy(form, true);
     try {
       const viewport = this.collectViewport();
+      if (positionAnchor(this.tempTarget, this.tempAnchor).mention) {
+        this.tempAnchor.interaction_state = 'hover';
+      }
       const data = await this.api.createPin({
         project_key: this.projectKey,
         page_key: this.currentPageKey,
@@ -629,7 +671,10 @@ class ReviewLayerApp {
     try {
       const data = await this.api.getPin(id, this.projectKey, this.panelController.signal);
       this.currentPin = data.pin;
-      this.currentPin.anchor_uncertain = this.anchorResolver.resolve(this.currentPin).uncertain;
+      const resolvedAnchor = this.anchorResolver.resolve(this.currentPin);
+      this.currentPin.anchor_uncertain = resolvedAnchor.uncertain;
+      this.currentPin.interaction_state = this.currentPin.anchor?.interaction_state
+        || (resolvedAnchor.mention ? 'hover' : '');
       this.renderConversation();
       this.renderPins();
       if (!preserveFocus) this.focusPanel('[data-action="close-panel"]');
@@ -650,7 +695,8 @@ class ReviewLayerApp {
         <button class="rl-text-button rl-danger-text" type="button" data-action="delete-message" data-message-id="${escapeHtml(message.id)}">${escapeHtml(this.t('deleteMessage'))}</button>
       </article>`).join('');
     const hiddenNotice = this.pinsVisible ? '' : `<div class="rl-notice">${escapeHtml(this.t('pinsAreCurrentlyHidden'))}<button class="rl-text-button" type="button" data-action="show-pins">${escapeHtml(this.t('showPinsInPanel'))}</button></div>`;
-    const title = this.t('pinNumber', { number: pin.pin_number });
+    const interactionState = pin.interaction_state || pin.anchor?.interaction_state || '';
+    const title = `${this.t('pinNumber', { number: pin.pin_number })}${interactionState === 'hover' ? ' (:hover)' : ''}`;
     this.panel.innerHTML = this.panelFrame(title, `
       ${hiddenNotice}
       <div class="rl-status-row"><span class="rl-status is-${escapeHtml(pin.status)}">${escapeHtml(this.t(pin.status === 'resolved' ? 'statusResolved' : 'statusOpen'))}</span><button class="rl-text-button" type="button" data-action="toggle-status">${escapeHtml(this.t(pin.status === 'resolved' ? 'reopen' : 'resolve'))}</button><button class="rl-icon-button rl-small" type="button" data-action="refresh-pin" aria-label="${escapeHtml(this.t('refresh'))}" title="${escapeHtml(this.t('refresh'))}">${materialIcon('refresh')}</button></div>

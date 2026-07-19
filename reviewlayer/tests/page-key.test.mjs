@@ -16,7 +16,7 @@ test('removes ReviewLayer parameters without removing prototype parameters', () 
   );
 });
 
-test('keeps ports and hashes distinct', () => {
+test('keeps ports and hash routes distinct', () => {
   assert.notEqual(
     createPageKey({ href: 'http://localhost:3000/oferta' }),
     createPageKey({ href: 'http://localhost:5173/oferta' })
@@ -24,6 +24,17 @@ test('keeps ports and hashes distinct', () => {
   assert.notEqual(
     createPageKey({ href: 'https://example.com/#/oferta' }),
     createPageKey({ href: 'https://example.com/#/kontakt' })
+  );
+});
+
+test('ignores regular in-page anchor fragments', () => {
+  assert.equal(
+    createPageKey({ href: 'https://example.com/prototype#demo' }),
+    createPageKey({ href: 'https://example.com/prototype' })
+  );
+  assert.equal(
+    createPageKey({ href: 'https://example.com/prototype#pricing' }),
+    createPageKey({ href: 'https://example.com/prototype#demo' })
   );
 });
 

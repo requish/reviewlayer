@@ -46,7 +46,7 @@
   "tablet": "Tablet",
   "desktop": "Desktop",
   "filterPins": "Filtr pinezek według urządzenia",
-  "addModeInstruction": "Kliknij miejsce na stronie, w którym chcesz dodać uwagę. Escape anuluje.",
+  "addModeInstruction": "Najedź, aby rozwinąć elementy interaktywne, a następnie kliknij cel. Escape anuluje.",
   "newPin": "Nowa pinezka",
   "firstComment": "Pierwsza uwaga",
   "commentPlaceholder": "Opisz oczekiwaną zmianę…",

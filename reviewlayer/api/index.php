@@ -14,7 +14,7 @@ use ReviewLayer\Validation;
 
 require_once __DIR__ . '/bootstrap.php';
 
-/** @param array<string, mixed> $value @return array<string, float|int|array<string, float|int>> */
+/** @param array<string, mixed> $value @return array<string, mixed> */
 function sanitizeAnchor(array $value): array
 {
     $required = [
@@ -38,6 +38,40 @@ function sanitizeAnchor(array $value): array
             throw new InvalidArgumentException('anchor.element_rect.' . $field . ' is invalid.');
         }
         $output['element_rect'][$field] = (float) $rect[$field];
+    }
+
+    $output['fallback_ancestors'] = [];
+    $fallbackAncestors = $value['fallback_ancestors'] ?? [];
+    if (!is_array($fallbackAncestors)) {
+        throw new InvalidArgumentException('anchor.fallback_ancestors is invalid.');
+    }
+    foreach (array_slice($fallbackAncestors, 0, 8) as $index => $fallback) {
+        if (!is_array($fallback)) {
+            throw new InvalidArgumentException('anchor.fallback_ancestors.' . $index . ' is invalid.');
+        }
+        $selector = Validation::string(
+            $fallback['selector'] ?? null,
+            'anchor.fallback_ancestors.' . $index . '.selector',
+            1,
+            2048
+        );
+        foreach (['offset_x', 'offset_y'] as $field) {
+            if (!isset($fallback[$field]) || !is_numeric($fallback[$field]) || !is_finite((float) $fallback[$field])) {
+                throw new InvalidArgumentException('anchor.fallback_ancestors.' . $index . '.' . $field . ' is invalid.');
+            }
+        }
+        $output['fallback_ancestors'][] = [
+            'selector' => $selector,
+            'offset_x' => (float) $fallback['offset_x'],
+            'offset_y' => (float) $fallback['offset_y'],
+        ];
+    }
+
+    if (isset($value['interaction_state'])) {
+        if (!is_string($value['interaction_state']) || $value['interaction_state'] !== 'hover') {
+            throw new InvalidArgumentException('anchor.interaction_state is invalid.');
+        }
+        $output['interaction_state'] = 'hover';
     }
     return $output;
 }

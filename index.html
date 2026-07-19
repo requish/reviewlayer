@@ -13,15 +13,15 @@
   <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="site.webmanifest">
   <title>ReviewLayer — contextual feedback for website prototypes</title>
-  <link rel="stylesheet" href="/assets/reviewlayer-demo.css?v=1.0.1">
-  <script src="/assets/reviewlayer-demo.js?v=1.0.1" defer></script>
+  <link rel="stylesheet" href="/assets/reviewlayer-demo.css?v=1.1.0">
+  <script src="/assets/reviewlayer-demo.js?v=1.1.0" defer></script>
 </head>
 <body data-demo-mode="standard">
   <a class="skip-link" href="#main-content">Skip to content</a>
 
   <header class="site-header" data-site-header>
     <nav class="site-nav shell" aria-label="Primary navigation">
-      <a class="brand" href="#top" aria-label="ReviewLayer home">
+      <a class="brand" href="/" aria-label="ReviewLayer home">
         <span class="brand-mark" aria-hidden="true"><span></span></span>
         <span>ReviewLayer</span>
       </a>
@@ -65,7 +65,7 @@
             </a>
           </div>
           <dl class="hero-facts" aria-label="Product facts">
-            <div><dt>Version</dt><dd>1.0.1</dd></div>
+            <div><dt>Version</dt><dd>1.1.0</dd></div>
             <div><dt>Integration</dt><dd>One script</dd></div>
             <div><dt>Runtime</dt><dd>Self-hosted</dd></div>
           </dl>
@@ -105,7 +105,20 @@
                 <p class="panel-kicker">Client review / Homepage</p>
                 <h3>Final layout pass</h3>
               </div>
-              <span class="panel-state"><i aria-hidden="true"></i>Ready for feedback</span>
+              <div class="panel-tools">
+                <span class="panel-state"><i aria-hidden="true"></i>Ready for feedback</span>
+                <div class="demo-hover-menu">
+                  <button class="demo-hover-trigger" type="button" aria-haspopup="true">
+                    <span>Test menu</span>
+                    <span class="material-symbol" aria-hidden="true">arrow_downward</span>
+                  </button>
+                  <nav class="demo-hover-panel" aria-label="Prototype test menu">
+                    <a href="#workflow"><span>Review workflow</span><small>01</small></a>
+                    <a href="#features"><span>Feature notes</span><small>02</small></a>
+                    <a href="#integration"><span>Install check</span><small>03</small></a>
+                  </nav>
+                </div>
+              </div>
             </header>
 
             <div class="demo-target-grid">
@@ -361,7 +374,7 @@
   <footer class="site-footer">
     <div class="shell footer-grid">
       <div>
-        <a class="brand" href="#top" aria-label="ReviewLayer home">
+        <a class="brand" href="/" aria-label="ReviewLayer home">
           <span class="brand-mark" aria-hidden="true"><span></span></span>
           <span>ReviewLayer</span>
         </a>

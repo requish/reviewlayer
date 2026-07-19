@@ -46,7 +46,7 @@
   "tablet": "Tablet",
   "desktop": "Desktop",
   "filterPins": "Filter pins by device",
-  "addModeInstruction": "Click the place on the page where you want to add a note. Escape cancels.",
+  "addModeInstruction": "Hover to reveal interactive elements, then click the target. Escape cancels.",
   "newPin": "New pin",
   "firstComment": "First comment",
   "commentPlaceholder": "Describe the expected change…",

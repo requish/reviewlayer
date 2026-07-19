@@ -3,7 +3,7 @@
   font-style: normal;
   font-weight: 400;
   font-display: block;
-  src: url("/reviewlayer/assets/fonts/material-symbols-outlined.woff2?v=1.0.1") format("woff2");
+  src: url("/reviewlayer/assets/fonts/material-symbols-outlined.woff2?v=1.1.0") format("woff2");
 }
 
 :root {
@@ -693,6 +693,85 @@ pre {
   display: block;
   background: var(--success);
   border-radius: 50%;
+}
+
+.panel-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.demo-hover-menu {
+  position: relative;
+  z-index: 5;
+}
+
+.demo-hover-trigger {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px 7px 12px;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: .75rem;
+  font-weight: 600;
+  background: rgba(255, 255, 255, .045);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.demo-hover-trigger .material-symbol {
+  font-size: 1rem;
+  transition: transform var(--duration-fast) ease;
+}
+
+.demo-hover-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: 210px;
+  display: none;
+  padding: 7px;
+  background: #161722;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .42);
+}
+
+.demo-hover-panel a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 11px;
+  color: var(--text-soft);
+  font-size: .78rem;
+  border-radius: 9px;
+}
+
+.demo-hover-panel small {
+  color: var(--action-hover);
+  font-family: var(--font-mono);
+  font-size: .64rem;
+}
+
+.demo-hover-panel a:hover,
+.demo-hover-panel a:focus-visible {
+  color: var(--text);
+  background: rgba(118, 92, 246, .14);
+  outline: none;
+}
+
+.demo-hover-menu:hover .demo-hover-panel,
+.demo-hover-menu:focus-within .demo-hover-panel {
+  display: block;
+}
+
+.demo-hover-menu:hover .demo-hover-trigger .material-symbol,
+.demo-hover-menu:focus-within .demo-hover-trigger .material-symbol {
+  transform: rotate(180deg);
 }
 
 .demo-target-grid {
@@ -1892,6 +1971,11 @@ pre {
     flex-direction: column;
   }
 
+  .panel-tools {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
   .demo-target-featured {
     grid-column: auto;
   }
@@ -1948,8 +2032,8 @@ pre {
 }
 
 @media (max-width: 430px) {
-  .site-nav .brand span:last-child {
-    display: none;
+  .site-nav .brand > span:last-child {
+    font-size: 1.05rem;
   }
 
   .hero-facts {
