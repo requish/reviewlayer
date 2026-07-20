@@ -40,6 +40,13 @@ export function createPageKey(locationLike) {
   return createCanonicalUrl(locationLike);
 }
 
+export function createNavigationPageKey(locationLike) {
+  const url = new URL(createCanonicalUrl(locationLike));
+  const hostname = url.hostname.replace(/^www\./i, '').toLowerCase();
+  const port = url.port ? `:${url.port}` : '';
+  return `${hostname}${port}${url.pathname}${url.search}${url.hash}`;
+}
+
 export function hasClearParameter(locationLike = window.location) {
   const url = new URL(locationLike.href);
   return url.searchParams.get('reviewlayer') === 'clear';

@@ -44,7 +44,7 @@ final class Database implements StorageInterface
     public function listProjectPins(string $projectKey): array
     {
         $statement = $this->pdo->prepare(
-            'SELECT p.id, p.page_key, p.page_url, p.pin_number, p.status, p.author_name, p.created_at, p.updated_at,
+            'SELECT p.id, p.page_key, p.page_url, p.pin_number, p.status, p.author_name, p.created_at, p.updated_at, p.viewport_json,
                     (SELECT m.message FROM messages m WHERE m.pin_id = p.id AND m.deleted_at IS NULL ORDER BY m.created_at ASC LIMIT 1) AS first_message
              FROM pins p
              WHERE p.project_key = :project_key AND p.deleted_at IS NULL
@@ -53,6 +53,9 @@ final class Database implements StorageInterface
         $statement->execute(['project_key' => $projectKey]);
         return array_map(static function (array $row): array {
             $row['pin_number'] = (int) $row['pin_number'];
+            $viewport = json_decode((string) $row['viewport_json'], true, 64, JSON_THROW_ON_ERROR);
+            $row['viewport'] = ['device_type' => is_array($viewport) ? (string) ($viewport['device_type'] ?? '') : ''];
+            unset($row['viewport_json']);
             return $row;
         }, $statement->fetchAll());
     }

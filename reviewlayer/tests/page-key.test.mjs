@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPageKey, createPinNavigationUrl, getRequestedPinId } from '../assets/page-key.js';
+import { createNavigationPageKey, createPageKey, createPinNavigationUrl, getRequestedPinId } from '../assets/page-key.js';
 
 test('normalizes trailing slash and sorts ordinary query parameters', () => {
   assert.equal(
@@ -41,6 +41,17 @@ test('ignores regular in-page anchor fragments', () => {
 test('normalizes default ports but preserves non-default ports', () => {
   assert.equal(createPageKey({ href: 'https://example.com:443/' }), 'https://example.com/');
   assert.equal(createPageKey({ href: 'https://example.com:8443/' }), 'https://example.com:8443/');
+});
+
+test('compares redirected HTTP, HTTPS, and www variants as the same navigation page', () => {
+  assert.equal(
+    createNavigationPageKey({ href: 'http://www.example.com/oferta?variant=2' }),
+    createNavigationPageKey({ href: 'https://example.com/oferta?variant=2' })
+  );
+  assert.notEqual(
+    createNavigationPageKey({ href: 'https://example.com:8443/oferta' }),
+    createNavigationPageKey({ href: 'https://example.com/oferta' })
+  );
 });
 
 test('creates a temporary pin navigation URL without changing the page key', () => {

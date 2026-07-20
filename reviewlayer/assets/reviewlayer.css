@@ -3,7 +3,7 @@
   font-style: normal;
   font-weight: 400;
   font-display: block;
-  src: url("fonts/material-symbols-outlined.woff2?v=1.1.10") format("woff2");
+  src: url("fonts/material-symbols-outlined.woff2?v=1.1.20") format("woff2");
 }
 
 :host {
@@ -112,9 +112,41 @@ button {
   transition: transform .16s ease, box-shadow .16s ease, background .16s ease;
 }
 
-.rl-pin > span:not(.rl-pin-tooltip),
+.rl-pin > .rl-pin-number,
 .rl-temp-pin > .rl-material-icon {
   transform: rotate(45deg);
+}
+
+.rl-device-badge {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 19px;
+  display: inline-grid;
+  place-items: center;
+  color: #10131a;
+  background: #fff;
+  border: 1px solid #d5dbe4;
+  border-radius: 999px;
+  box-shadow: 0 2px 7px rgba(24, 32, 45, .14);
+}
+
+.rl-device-badge > .rl-material-icon {
+  font-size: 14px;
+}
+
+.rl-device-badge.is-pin {
+  position: absolute;
+  left: 17px;
+  top: -7px;
+  z-index: 2;
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+  transform: rotate(45deg);
+}
+
+.rl-device-badge.is-pin > .rl-material-icon {
+  font-size: 14px;
 }
 
 .rl-temp-pin > .rl-material-icon {
@@ -436,20 +468,46 @@ summary:focus-visible {
 .rl-filters {
   flex: 0 0 auto;
   display: flex;
+  gap: 2px;
   padding: 3px;
-  background: var(--rl-soft);
+  background: #e9edf3;
   border-radius: 10px;
 }
 
 .rl-filters button {
+  width: 34px;
   min-height: 32px;
-  padding: 5px 8px;
+  display: inline-grid;
+  place-items: center;
+  padding: 5px;
   color: var(--rl-muted);
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
   background: transparent;
   border-radius: 7px;
+}
+
+.rl-filters button[data-filter="all"] {
+  width: 58px;
+}
+
+.rl-filter-icons {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rl-filter-icons > .rl-material-icon {
+  font-size: 20px;
+}
+
+.rl-filter-icons.is-all {
+  gap: 1px;
+}
+
+.rl-filter-icons.is-all > .rl-material-icon {
+  font-size: 16px;
 }
 
 .rl-filters button.is-active {
@@ -546,8 +604,25 @@ summary:focus-visible {
 
 .rl-panel-header h2 {
   margin: 1px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
   font-size: 20px;
   line-height: 1.25;
+}
+
+.rl-device-badge.is-title {
+  width: 23px;
+  height: 23px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  transform: translateY(1px);
+}
+
+.rl-device-badge.is-title > .rl-material-icon {
+  font-size: 23px;
 }
 
 .rl-eyebrow {
@@ -738,6 +813,14 @@ summary:focus-visible {
   background: #06634b;
 }
 
+.rl-status-action.is-reopen {
+  background: #1976d2;
+}
+
+.rl-status-action.is-reopen:hover {
+  background: #1565c0;
+}
+
 .rl-status-action > .rl-material-icon {
   font-size: 17px;
 }
@@ -788,6 +871,19 @@ summary:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.rl-device-badge.is-list {
+  width: 19px;
+  height: 19px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.rl-device-badge.is-list > .rl-material-icon {
+  font-size: 19px;
 }
 
 .rl-project-pin-head strong {
@@ -978,10 +1074,6 @@ summary:focus-visible {
     top: calc(8px + env(safe-area-inset-top));
   }
 
-  .rl-filters {
-    display: none;
-  }
-
   .rl-label-full {
     display: none;
   }
@@ -1023,8 +1115,49 @@ summary:focus-visible {
   }
 }
 
+@media (max-width: 520px) {
+  .rl-toolbar {
+    width: calc(100vw - 16px);
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .rl-filters {
+    flex: 0 0 100%;
+    order: 2;
+  }
+
+  .rl-filters button {
+    width: auto;
+    flex: 1 1 0;
+  }
+
+  .rl-filters button[data-filter="all"] {
+    width: auto;
+    flex-grow: 1.5;
+  }
+
+  .rl-layer[data-toolbar-position="top"] .rl-panel {
+    top: max(104px, env(safe-area-inset-top));
+  }
+
+  .rl-layer[data-toolbar-position="top"] .rl-instruction,
+  .rl-layer[data-toolbar-position="top"] .rl-toast {
+    top: calc(110px + env(safe-area-inset-top));
+  }
+
+  .rl-layer[data-toolbar-position="bottom"] .rl-panel-body {
+    padding-bottom: 120px;
+  }
+}
+
 @media (max-width: 410px) {
-  .rl-visibility > .rl-material-icon {
+  .rl-visibility {
+    width: 38px;
+    padding: 8px;
+  }
+
+  .rl-visibility > .rl-label-short {
     display: none;
   }
 }

@@ -3,6 +3,7 @@ import { captureAnchor, createAnchorResolver, positionAnchor } from './anchor.js
 import {
   createPinNavigationUrl,
   createCanonicalUrl,
+  createNavigationPageKey,
   createPageKey,
   getRequestedPinId,
   hasClearParameter,
@@ -10,9 +11,14 @@ import {
   removeReviewLayerParameters
 } from './page-key.js';
 
-const VERSION = '1.1.10';
+const VERSION = '1.1.20';
 const MATERIAL_ICON_FONT_FAMILY = 'ReviewLayer Material Symbols';
 const FILTERS = ['all', 'mobile', 'tablet', 'desktop'];
+const DEVICE_ICONS = Object.freeze({
+  mobile: 'smartphone',
+  tablet: 'tablet',
+  desktop: 'laptop'
+});
 const ATTRIBUTION_MANIFEST = Object.freeze({
   payload: 'MkIuRGVzaWduIFdlYiBTdHVkaW98aHR0cHM6Ly93d3cud2ViLjJiLmRlc2lnbi8=',
   sha256: 'd3bb07d0ef598083e1352e1455e1a6aa7bc4b38dc2ff7137ab7c59c4a499fb17'
@@ -37,6 +43,23 @@ function safeGet(storage, key, fallback = '') {
   } catch {
     return fallback;
   }
+}
+
+function normalizeDeviceType(value) {
+  const deviceType = String(value || '').toLowerCase();
+  return Object.prototype.hasOwnProperty.call(DEVICE_ICONS, deviceType) ? deviceType : '';
+}
+
+function createCompatiblePinUrl(pageUrl) {
+  const targetUrl = new URL(pageUrl, window.location.href);
+  const currentUrl = new URL(window.location.href);
+  if (currentUrl.protocol === 'https:'
+    && targetUrl.protocol === 'http:'
+    && targetUrl.hostname === currentUrl.hostname
+    && !targetUrl.port) {
+    targetUrl.protocol = 'https:';
+  }
+  return targetUrl;
 }
 
 function dispatchInteractionHoverEvents(trigger, active) {
@@ -237,6 +260,18 @@ class ReviewLayerApp {
     return text;
   }
 
+  deviceBadge(deviceType, variant) {
+    const normalizedType = normalizeDeviceType(deviceType);
+    if (!normalizedType) return '';
+    const label = this.t(normalizedType);
+    return `<span class="rl-device-badge is-${escapeHtml(variant)}" role="img" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">${materialIcon(DEVICE_ICONS[normalizedType])}</span>`;
+  }
+
+  filterIcon(filter) {
+    const deviceTypes = filter === 'all' ? FILTERS.slice(1) : [filter];
+    return `<span class="rl-filter-icons${filter === 'all' ? ' is-all' : ''}" aria-hidden="true">${deviceTypes.map((deviceType) => materialIcon(DEVICE_ICONS[deviceType])).join('')}</span>`;
+  }
+
   async init() {
     installNavigationObserver();
     this.createHost();
@@ -283,7 +318,7 @@ class ReviewLayerApp {
           ${eyeIcon(!this.pinsVisible)}<span class="rl-label-full">${escapeHtml(this.t(this.pinsVisible ? 'hidePins' : 'showPins'))}</span><span class="rl-label-short">${escapeHtml(this.t('pinsShort'))}</span>
         </button>
         <div class="rl-filters" role="group" aria-label="${escapeHtml(this.t('filterPins'))}">
-          ${FILTERS.map((filter) => `<button type="button" data-filter="${filter}" class="${this.filter === filter ? 'is-active' : ''}" aria-pressed="${this.filter === filter}">${escapeHtml(this.t(filter))}</button>`).join('')}
+          ${FILTERS.map((filter) => `<button type="button" data-filter="${filter}" class="${this.filter === filter ? 'is-active' : ''}" aria-pressed="${this.filter === filter}" aria-label="${escapeHtml(this.t(filter))}" title="${escapeHtml(this.t(filter))}">${this.filterIcon(filter)}</button>`).join('')}
         </div>
         <button class="rl-button rl-button-primary" type="button" data-action="toggle-add" aria-label="${escapeHtml(this.t(this.adding ? 'cancelAdd' : 'addPin'))}"><span class="rl-add-icon" aria-hidden="true">${addModeIcon(this.adding)}</span><span class="rl-label-full">${escapeHtml(this.t(this.adding ? 'cancel' : 'addPin'))}</span><span class="rl-label-short">${escapeHtml(this.t(this.adding ? 'cancel' : 'addPinShort'))}</span></button>
         <div class="rl-toolbar-position" role="group" aria-label="${escapeHtml(this.t('toolbarPosition'))}">
@@ -380,7 +415,7 @@ class ReviewLayerApp {
     if (this.pins.some((pin) => pin.id === requestedPinId)) {
       await this.openConversation(requestedPinId);
     } else {
-      this.showToast(this.t('pinNavigationFailed'), true);
+      await this.openConversation(requestedPinId);
     }
     return true;
   }
@@ -395,10 +430,12 @@ class ReviewLayerApp {
       const tooltip = this.t(tooltipKey, { message: firstMessage });
       const interactionState = pin.interaction_state || pin.anchor?.interaction_state || '';
       const stateClasses = `${pin.status === 'resolved' ? ' is-resolved' : ''}${this.currentPin?.id === pin.id ? ' is-active' : ''}${interactionState === 'hover' ? ' is-hover' : ''}`;
-      const pinLabel = escapeHtml(this.t('pinNumber', { number: pin.pin_number }));
+      const deviceType = normalizeDeviceType(pin.viewport?.device_type);
+      const pinLabel = escapeHtml(`${this.t('pinNumber', { number: pin.pin_number })}${deviceType ? `, ${this.t(deviceType)}` : ''}`);
+      const deviceBadge = this.deviceBadge(deviceType, 'pin');
       const hoverHint = interactionState === 'hover' ? `<span class="rl-pin-tooltip-hint">${escapeHtml(this.t('pinTooltipHoverHint'))}</span>` : '';
       const tooltipMarkup = `<span class="rl-pin-tooltip" aria-hidden="true"><span>${escapeHtml(tooltip)}</span>${hoverHint}</span>`;
-      return `<button class="rl-pin${stateClasses}" type="button" data-pin-id="${escapeHtml(pin.id)}" aria-label="${pinLabel}"><span>${escapeHtml(pin.pin_number)}</span><i aria-hidden="true"></i>${tooltipMarkup}</button><button class="rl-pin-mention${stateClasses}" type="button" data-pin-mention-id="${escapeHtml(pin.id)}" aria-label="${pinLabel}" hidden>${materialIcon('arrow_upward')}<span>${escapeHtml(pin.pin_number)}</span></button>`;
+      return `<button class="rl-pin${stateClasses}" type="button" data-pin-id="${escapeHtml(pin.id)}" aria-label="${pinLabel}">${deviceBadge}<span class="rl-pin-number">${escapeHtml(pin.pin_number)}</span><i aria-hidden="true"></i>${tooltipMarkup}</button><button class="rl-pin-mention${stateClasses}" type="button" data-pin-mention-id="${escapeHtml(pin.id)}" aria-label="${pinLabel}" hidden>${materialIcon('arrow_upward')}<span>${escapeHtml(pin.pin_number)}</span></button>`;
     }).join('');
     this.schedulePositions();
   }
@@ -813,8 +850,8 @@ class ReviewLayerApp {
     const interactionState = pin.interaction_state || pin.anchor?.interaction_state || '';
     const title = `${this.t('pinNumber', { number: pin.pin_number })}${interactionState === 'hover' ? ' (:hover)' : ''}`;
     const statusAction = pin.status === 'resolved'
-      ? `<button class="rl-text-button" type="button" data-action="toggle-status">${escapeHtml(this.t('reopen'))}</button>`
-      : `<button class="rl-button rl-status-action" type="button" data-action="toggle-status">${materialIcon('check')}<span>${escapeHtml(this.t('resolve'))}</span></button>`;
+      ? `<button class="rl-button rl-status-action is-reopen" type="button" data-action="toggle-status">${materialIcon('reopen_window')}<span>${escapeHtml(this.t('reopen'))}</span></button>`
+      : `<button class="rl-button rl-status-action" type="button" data-action="toggle-status">${materialIcon('select_check_box')}<span>${escapeHtml(this.t('resolve'))}</span></button>`;
     this.panel.innerHTML = this.panelFrame(title, `
       ${hiddenNotice}
       <div class="rl-status-row"><span class="rl-status is-${escapeHtml(pin.status)}">${escapeHtml(this.t(pin.status === 'resolved' ? 'statusResolved' : 'statusOpen'))}</span>${statusAction}<button class="rl-icon-button rl-small" type="button" data-action="refresh-pin" aria-label="${escapeHtml(this.t('refresh'))}" title="${escapeHtml(this.t('refresh'))}">${materialIcon('refresh')}</button></div>
@@ -836,7 +873,7 @@ class ReviewLayerApp {
           <div><dt>${escapeHtml(this.t('operatingSystem'))}</dt><dd>${escapeHtml(browser.os || this.t('unknown'))}</dd></div>
         </dl>
       </details>
-      <button class="rl-button rl-button-danger" type="button" data-action="delete-pin">${escapeHtml(this.t('deletePin'))}</button>`);
+      <button class="rl-button rl-button-danger" type="button" data-action="delete-pin">${escapeHtml(this.t('deletePin'))}</button>`, '', this.deviceBadge(viewport.device_type, 'title'));
   }
 
   async submitReply(form) {
@@ -996,7 +1033,7 @@ class ReviewLayerApp {
         const page = this.formatPageLabel(pin.page_url);
         const statusKey = pin.status === 'resolved' ? 'statusResolved' : 'statusOpen';
         return `<button class="rl-project-pin" type="button" data-action="open-project-pin" data-pin-id="${escapeHtml(pin.id)}" aria-label="${escapeHtml(this.t('openProjectPin', { number: pin.pin_number, page }))}">
-          <span class="rl-project-pin-head"><strong>#${escapeHtml(pin.pin_number)}</strong><span class="rl-status is-${escapeHtml(pin.status)}">${escapeHtml(this.t(statusKey))}</span><span class="rl-project-pin-arrow" aria-hidden="true">${materialIcon('arrow_forward')}</span></span>
+          <span class="rl-project-pin-head">${this.deviceBadge(pin.viewport?.device_type, 'list')}<strong>#${escapeHtml(pin.pin_number)}</strong><span class="rl-status is-${escapeHtml(pin.status)}">${escapeHtml(this.t(statusKey))}</span><span class="rl-project-pin-arrow" aria-hidden="true">${materialIcon('arrow_forward')}</span></span>
           <span class="rl-project-pin-page" title="${escapeHtml(pin.page_url)}">${escapeHtml(page)}</span>
           <span class="rl-project-pin-message">${escapeHtml(pin.first_message || this.t('noMessages'))}</span>
         </button>`;
@@ -1014,11 +1051,12 @@ class ReviewLayerApp {
     if (!pin) return this.showToast(this.t('pinNavigationFailed'), true);
 
     try {
-      if (createPageKey(pin.page_url) === this.currentPageKey) {
+      const targetUrl = createCompatiblePinUrl(pin.page_url);
+      if (createNavigationPageKey(targetUrl) === createNavigationPageKey(window.location)) {
         this.openConversation(pin.id);
         return;
       }
-      window.location.assign(createPinNavigationUrl(pin.page_url, pin.id));
+      window.location.assign(createPinNavigationUrl(targetUrl.href, pin.id));
     } catch {
       this.showToast(this.t('pinNavigationFailed'), true);
     }
@@ -1224,8 +1262,8 @@ class ReviewLayerApp {
     else this.panel.removeAttribute('aria-modal');
   }
 
-  panelFrame(title, content, bodyClass = '') {
-    return `<header class="rl-panel-header"><div><span class="rl-eyebrow">${escapeHtml(this.t('appName'))}</span><h2>${escapeHtml(title)}</h2></div><button class="rl-icon-button" type="button" data-action="close-panel" aria-label="${escapeHtml(this.t('close'))}" title="${escapeHtml(this.t('close'))}">${materialIcon('close')}</button></header><div class="rl-panel-body${bodyClass ? ` ${escapeHtml(bodyClass)}` : ''}">${content}</div>`;
+  panelFrame(title, content, bodyClass = '', titlePrefix = '') {
+    return `<header class="rl-panel-header"><div><span class="rl-eyebrow">${escapeHtml(this.t('appName'))}</span><h2>${titlePrefix}${escapeHtml(title)}</h2></div><button class="rl-icon-button" type="button" data-action="close-panel" aria-label="${escapeHtml(this.t('close'))}" title="${escapeHtml(this.t('close'))}">${materialIcon('close')}</button></header><div class="rl-panel-body${bodyClass ? ` ${escapeHtml(bodyClass)}` : ''}">${content}</div>`;
   }
 
   closePanel(restoreFocus = true) {

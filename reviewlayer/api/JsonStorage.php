@@ -66,6 +66,7 @@ final class JsonStorage implements StorageInterface
                 'created_at' => $pin['created_at'],
                 'updated_at' => $pin['updated_at'],
                 'first_message' => $pin['first_message'],
+                'viewport' => ['device_type' => (string) ($pin['viewport']['device_type'] ?? '')],
             ], $pins);
             usort($pins, static fn (array $a, array $b): int => $b['pin_number'] <=> $a['pin_number']);
             return $pins;

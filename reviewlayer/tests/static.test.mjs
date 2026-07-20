@@ -126,14 +126,16 @@ test('Ctrl or Command plus Enter submits comment forms only', async () => {
   assert.match(app, /form\.requestSubmit\(\)/);
 });
 
-test('open pin uses a compact green resolve CTA with a check icon', async () => {
+test('status actions use a green resolve CTA and a blue reopen CTA with dedicated icons', async () => {
   const [app, css] = await Promise.all([read('assets/app.js'), read('assets/reviewlayer.css')]);
   assert.match(app, /rl-button rl-status-action/);
   assert.doesNotMatch(app, /rl-button rl-button-primary rl-status-action/);
-  assert.match(app, /materialIcon\('check'\)/);
-  assert.match(app, /pin\.status === 'resolved'[\s\S]*rl-text-button[\s\S]*rl-status-action/);
+  assert.match(app, /materialIcon\('select_check_box'\)/);
+  assert.match(app, /pin\.status === 'resolved'[\s\S]*rl-status-action is-reopen[\s\S]*materialIcon\('reopen_window'\)/);
   assert.match(css, /\.rl-status-action[\s\S]*min-height:\s*34px;[\s\S]*color:\s*#fff;[\s\S]*background:\s*#08775a;/);
   assert.match(css, /\.rl-status-action:hover[\s\S]*background:\s*#06634b;/);
+  assert.match(css, /\.rl-status-action\.is-reopen[\s\S]*background:\s*#1976d2;/);
+  assert.match(css, /\.rl-status-action\.is-reopen:hover[\s\S]*background:\s*#1565c0;/);
 });
 
 test('toolbar uses available width and persists its top or bottom position', async () => {
@@ -146,6 +148,23 @@ test('toolbar uses available width and persists its top or bottom position', asy
   assert.match(css, /\.rl-toolbar\.is-top[\s\S]*env\(safe-area-inset-top\)/);
   assert.match(css, /\.rl-toolbar\.is-bottom[\s\S]*env\(safe-area-inset-bottom\)/);
   assert.doesNotMatch(css, /\.rl-position-switch\[aria-checked="true"\][^{]*\{[^}]*background:/);
+});
+
+test('viewport filters use device icons and move to a second toolbar row on mobile', async () => {
+  const [app, css] = await Promise.all([read('assets/app.js'), read('assets/reviewlayer.css')]);
+  assert.match(app, /filterIcon\(filter\)/);
+  assert.match(app, /filter === 'all' \? FILTERS\.slice\(1\)/);
+  assert.match(app, /data-filter="\$\{filter\}"[\s\S]*aria-label=[\s\S]*title=[\s\S]*this\.filterIcon\(filter\)/);
+  assert.match(css, /\.rl-filter-icons\.is-all/);
+  assert.match(css, /@media \(max-width: 520px\)[\s\S]*\.rl-toolbar[\s\S]*flex-wrap:\s*wrap;[\s\S]*\.rl-filters[\s\S]*flex:\s*0 0 100%;[\s\S]*order:\s*2;/);
+  assert.doesNotMatch(css, /@media \(max-width: 780px\)[\s\S]*?\.rl-filters\s*\{[^}]*display:\s*none;/);
+  assert.match(css, /@media \(max-width: 410px\)[\s\S]*\.rl-visibility > \.rl-label-short\s*\{[^}]*display:\s*none;/);
+  assert.doesNotMatch(css, /\.rl-visibility > \.rl-material-icon\s*\{[^}]*display:\s*none;/);
+});
+
+test('mobile demo facts keep labels and values separated', async () => {
+  const css = await readFile(resolve(projectDirectory, 'assets/reviewlayer-demo.css'), 'utf8');
+  assert.match(css, /@media \(max-width: 430px\)[\s\S]*\.hero-facts div\s*\{[^}]*grid-template-columns:\s*96px minmax\(0, 1fr\);[^}]*column-gap:\s*16px;/);
 });
 
 test('settings contain a protected 2B.Design attribution footer', async () => {
@@ -226,7 +245,28 @@ test('project pin overview is available from a hamburger button before settings'
   assert.match(storage, /listProjectPins\(string \$projectKey\)/);
   assert.match(database, /public function listProjectPins/);
   assert.match(jsonStorage, /public function listProjectPins/);
+  assert.match(database, /p\.viewport_json/);
+  assert.match(database, /'viewport'\] = \['device_type'/);
+  assert.match(jsonStorage, /'viewport' => \['device_type'/);
+  assert.match(app, /createNavigationPageKey\(targetUrl\) === createNavigationPageKey\(window\.location\)/);
+  assert.match(app, /await this\.openConversation\(requestedPinId\)/);
   assert.match(css, /\.rl-project-pins/);
+});
+
+test('device badges identify pin viewport on markers, conversations, and project list', async () => {
+  const [app, css] = await Promise.all([read('assets/app.js'), read('assets/reviewlayer.css')]);
+  assert.match(app, /const DEVICE_ICONS/);
+  assert.match(app, /this\.deviceBadge\(deviceType, 'pin'\)/);
+  assert.match(app, /this\.deviceBadge\(viewport\.device_type, 'title'\)/);
+  assert.match(app, /this\.deviceBadge\(pin\.viewport\?\.device_type, 'list'\)/);
+  assert.match(css, /\.rl-device-badge\.is-pin[\s\S]*left:\s*17px;[\s\S]*top:\s*-7px;[\s\S]*width:\s*18px;[\s\S]*height:\s*18px;/);
+  assert.match(css, /\.rl-device-badge\.is-pin > \.rl-material-icon[\s\S]*font-size:\s*14px;/);
+  assert.match(css, /\.rl-device-badge\.is-title[\s\S]*background:\s*transparent;[\s\S]*border:\s*0;[\s\S]*box-shadow:\s*none;/);
+  assert.match(css, /\.rl-device-badge\.is-title > \.rl-material-icon[\s\S]*font-size:\s*23px;/);
+  assert.match(css, /\.rl-panel-header h2[\s\S]*font-size:\s*20px;/);
+  assert.match(css, /\.rl-device-badge\.is-list[\s\S]*background:\s*transparent;[\s\S]*border:\s*0;[\s\S]*box-shadow:\s*none;/);
+  assert.match(css, /\.rl-device-badge\.is-list > \.rl-material-icon[\s\S]*font-size:\s*19px;/);
+  assert.match(css, /\.rl-project-pin-head strong[\s\S]*font-size:\s*14px;/);
 });
 
 test('runtime contains no external CDN dependency', async () => {
@@ -255,11 +295,15 @@ test('icons use a self-hosted Material Symbols font without SVG markup', async (
     'arrow_downward',
     'arrow_forward',
     'arrow_upward',
-    'check',
     'close',
+    'laptop',
     'menu',
     'refresh',
+    'reopen_window',
+    'select_check_box',
     'settings',
+    'smartphone',
+    'tablet',
     'visibility',
     'visibility_off'
   ]) {
