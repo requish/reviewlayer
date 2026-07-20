@@ -1,6 +1,6 @@
 # ReviewLayer
 
-ReviewLayer 1.1.20 is an independent annotation overlay for website prototypes. Clients can attach a note to a page element, discuss it, resolve it, and revisit it on another device. Installation needs no Node.js, build process, MySQL, CDN, or SaaS service.
+ReviewLayer 1.2.3 is an independent annotation overlay for website prototypes. Clients can attach a note to a page element, discuss it, resolve it, and revisit it on another device. Installation needs no Node.js, build process, MySQL, CDN, or SaaS service.
 
 ## Server requirements
 
@@ -85,11 +85,14 @@ The code exists only in server-executed `config.php`. Never place it in `embed.j
 
 The first comment form asks for a name. The name and a random author UUID are stored in `localStorage`; the name remains editable in settings.
 
+Each new commenter in a project receives the next color from a ten-color palette; the eleventh commenter reuses the first color. Pins and author badges keep that assignment, resolved pins use a less saturated companion color, and Settings lists all registered project commenters. Changing a display name does not change the assigned color.
+
 1. Select “Add pin”.
 2. Pick a point on the page. Highlighting belongs to the overlay and does not modify the prototype element.
 3. Enter the first comment and save. Cancel or `Escape` removes the temporary pin.
 4. Select a saved pin to open its conversation, reply, change status, delete a message, or delete the complete pin.
 5. The refresh button manually reloads the active conversation.
+6. “Locate pin” in the conversation header closes the panel, reveals the pin if necessary, scrolls it into view, and briefly highlights it.
 
 Comments render as plain text only. Timestamps originate on the server in UTC and display in local time.
 

@@ -253,6 +253,33 @@ test('project pin overview is available from a hamburger button before settings'
   assert.match(css, /\.rl-project-pins/);
 });
 
+test('commenters receive persistent cycling colors visible across pins, messages, lists, and settings', async () => {
+  const [app, client, api, storage, database, jsonStorage, css] = await Promise.all([
+    read('assets/app.js'),
+    read('assets/api-client.js'),
+    read('api/index.php'),
+    read('api/StorageInterface.php'),
+    read('api/Database.php'),
+    read('api/JsonStorage.php'),
+    read('assets/reviewlayer.css')
+  ]);
+  assert.match(app, /const AUTHOR_COLORS = Object\.freeze\(\[/);
+  assert.equal((app.match(/Object\.freeze\(\{ open: '#[0-9a-f]{6}', resolved: '#[0-9a-f]{6}' \}\)/g) || []).length, 10);
+  assert.match(app, /open: '#4e5cc3', resolved: '#5a6597'/);
+  assert.match(app, /authorColorStyle\(pin\.author_color_index\)/);
+  assert.match(app, /authorBadge\(message\.author_name, message\.author_color_index\)/);
+  assert.match(app, /authorBadge\(pin\.author_name, pin\.author_color_index\)/);
+  assert.match(app, /data-role="project-users"/);
+  assert.match(client, /listProjectUsers\(projectKey, signal\)/);
+  assert.match(api, /\$action === 'list-project-users'/);
+  assert.match(storage, /listProjectUsers\(string \$projectKey\)/);
+  assert.match(database, /CREATE TABLE IF NOT EXISTS project_users/);
+  assert.match(database, /\(\(\$sequenceNumber - 1\) % 10\) \+ 1/);
+  assert.match(jsonStorage, /\(\(\$sequenceNumber - 1\) % 10\) \+ 1/);
+  assert.match(css, /\.rl-pin\.is-resolved[\s\S]*var\(--rl-author-resolved-color/);
+  assert.match(css, /\.rl-author-badge[\s\S]*padding:\s*1px 6px;[\s\S]*color:\s*#fff;[\s\S]*border-radius:\s*2px;/);
+});
+
 test('device badges identify pin viewport on markers, conversations, and project list', async () => {
   const [app, css] = await Promise.all([read('assets/app.js'), read('assets/reviewlayer.css')]);
   assert.match(app, /const DEVICE_ICONS/);
@@ -267,6 +294,24 @@ test('device badges identify pin viewport on markers, conversations, and project
   assert.match(css, /\.rl-device-badge\.is-list[\s\S]*background:\s*transparent;[\s\S]*border:\s*0;[\s\S]*box-shadow:\s*none;/);
   assert.match(css, /\.rl-device-badge\.is-list > \.rl-material-icon[\s\S]*font-size:\s*19px;/);
   assert.match(css, /\.rl-project-pin-head strong[\s\S]*font-size:\s*14px;/);
+});
+
+test('conversation header locates, reveals, and highlights the current pin without closing the panel', async () => {
+  const [app, css] = await Promise.all([read('assets/app.js'), read('assets/reviewlayer.css')]);
+  const locateMethod = app.match(/locateCurrentPin\(\) \{([\s\S]*?)\n  \}\n\n  async submitReply/);
+  assert.match(app, /data-action="locate-pin"/);
+  assert.match(app, /locateCurrentPin\(\)/);
+  assert.ok(locateMethod);
+  assert.match(app, /this\.anchorResolver\.resolve\(pin\)/);
+  assert.match(app, /this\.filter = 'all'/);
+  assert.match(app, /this\.setPinsVisible\(true, false\)/);
+  assert.doesNotMatch(locateMethod[1], /closePanel/);
+  assert.match(app, /window\.scrollTo\(\{/);
+  assert.match(app, /marker\.classList\.add\('is-located'\)/);
+  assert.match(app, /panelFrame\(title, content, bodyClass = '', titlePrefix = '', titleAction = ''\)/);
+  assert.match(css, /\.rl-locate-pin/);
+  assert.match(css, /\.rl-pin\.is-located::before/);
+  assert.match(css, /@keyframes rl-pin-located/);
 });
 
 test('runtime contains no external CDN dependency', async () => {

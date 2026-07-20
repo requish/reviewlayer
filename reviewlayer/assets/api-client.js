@@ -84,6 +84,10 @@ export class ApiClient {
     return this.request('list-project-pins', { params: { project_key: projectKey }, signal });
   }
 
+  listProjectUsers(projectKey, signal) {
+    return this.request('list-project-users', { params: { project_key: projectKey }, signal });
+  }
+
   getPin(id, projectKey, signal) {
     return this.request('get-pin', { params: { id, project_key: projectKey }, signal });
   }

@@ -101,6 +101,46 @@ final class Validation
         return $scheme . '://' . $host . $portPart . $path . ($query !== '' ? '?' . $query : '') . $fragment;
     }
 
+    /** @return list<string> */
+    public static function compatiblePageKeys(string $pageKey): array
+    {
+        $canonical = self::canonicalPageKey($pageKey);
+        $parts = parse_url($canonical);
+        if (!is_array($parts) || !isset($parts['scheme'], $parts['host'])) {
+            return [$canonical];
+        }
+
+        $scheme = strtolower((string) $parts['scheme']);
+        $host = strtolower((string) $parts['host']);
+        $portPart = isset($parts['port']) ? ':' . (int) $parts['port'] : '';
+        $suffix = (string) ($parts['path'] ?? '/');
+        $suffix .= isset($parts['query']) ? '?' . $parts['query'] : '';
+        $suffix .= isset($parts['fragment']) ? '#' . $parts['fragment'] : '';
+
+        $schemes = [$scheme];
+        if ($portPart === '') {
+            $schemes[] = $scheme === 'https' ? 'http' : 'https';
+        }
+
+        $hosts = [$host];
+        $plainHost = trim($host, '[]');
+        $canUseWwwAlias = $plainHost !== 'localhost'
+            && filter_var($plainHost, FILTER_VALIDATE_IP) === false
+            && str_contains($plainHost, '.');
+        if ($canUseWwwAlias) {
+            $hosts[] = str_starts_with($host, 'www.') ? substr($host, 4) : 'www.' . $host;
+        }
+
+        $keys = [];
+        foreach ($schemes as $candidateScheme) {
+            foreach ($hosts as $candidateHost) {
+                $candidate = $candidateScheme . '://' . $candidateHost . $portPart . $suffix;
+                $keys[$candidate] = true;
+            }
+        }
+        return array_keys($keys);
+    }
+
     public static function pageContext(mixed $pageKey, mixed $pageUrl): array
     {
         $url = self::pageUrl($pageUrl);

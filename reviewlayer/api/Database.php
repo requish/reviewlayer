@@ -31,28 +31,40 @@ final class Database implements StorageInterface
 
     public function listPins(string $projectKey, string $pageKey): array
     {
+        $pageKeys = Validation::compatiblePageKeys($pageKey);
+        $parameters = ['project_key' => $projectKey];
+        $placeholders = [];
+        foreach ($pageKeys as $index => $candidate) {
+            $name = 'page_key_' . $index;
+            $placeholders[] = ':' . $name;
+            $parameters[$name] = $candidate;
+        }
         $statement = $this->pdo->prepare(
-            'SELECT p.*, (SELECT m.message FROM messages m WHERE m.pin_id = p.id AND m.deleted_at IS NULL ORDER BY m.created_at ASC LIMIT 1) AS first_message
+            'SELECT p.*, u.color_index AS author_color_index,
+                    (SELECT m.message FROM messages m WHERE m.pin_id = p.id AND m.deleted_at IS NULL ORDER BY m.created_at ASC LIMIT 1) AS first_message
              FROM pins p
-             WHERE p.project_key = :project_key AND p.page_key = :page_key AND p.deleted_at IS NULL
+             LEFT JOIN project_users u ON u.project_key = p.project_key AND u.author_id = p.author_id
+             WHERE p.project_key = :project_key AND p.page_key IN (' . implode(', ', $placeholders) . ') AND p.deleted_at IS NULL
              ORDER BY p.pin_number ASC'
         );
-        $statement->execute(['project_key' => $projectKey, 'page_key' => $pageKey]);
+        $statement->execute($parameters);
         return array_map(fn (array $row): array => $this->hydratePin($row), $statement->fetchAll());
     }
 
     public function listProjectPins(string $projectKey): array
     {
         $statement = $this->pdo->prepare(
-            'SELECT p.id, p.page_key, p.page_url, p.pin_number, p.status, p.author_name, p.created_at, p.updated_at, p.viewport_json,
+            'SELECT p.id, p.page_key, p.page_url, p.pin_number, p.status, p.author_name, u.color_index AS author_color_index, p.created_at, p.updated_at, p.viewport_json,
                     (SELECT m.message FROM messages m WHERE m.pin_id = p.id AND m.deleted_at IS NULL ORDER BY m.created_at ASC LIMIT 1) AS first_message
              FROM pins p
+             LEFT JOIN project_users u ON u.project_key = p.project_key AND u.author_id = p.author_id
              WHERE p.project_key = :project_key AND p.deleted_at IS NULL
              ORDER BY p.pin_number DESC'
         );
         $statement->execute(['project_key' => $projectKey]);
         return array_map(static function (array $row): array {
             $row['pin_number'] = (int) $row['pin_number'];
+            $row['author_color_index'] = isset($row['author_color_index']) ? (int) $row['author_color_index'] : 1;
             $viewport = json_decode((string) $row['viewport_json'], true, 64, JSON_THROW_ON_ERROR);
             $row['viewport'] = ['device_type' => is_array($viewport) ? (string) ($viewport['device_type'] ?? '') : ''];
             unset($row['viewport_json']);
@@ -60,18 +72,48 @@ final class Database implements StorageInterface
         }, $statement->fetchAll());
     }
 
+    public function listProjectUsers(string $projectKey): array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT author_name, color_index, created_at, updated_at
+             FROM project_users
+             WHERE project_key = :project_key
+             ORDER BY sequence_number ASC'
+        );
+        $statement->execute(['project_key' => $projectKey]);
+        return array_map(static function (array $row): array {
+            $row['color_index'] = (int) $row['color_index'];
+            return $row;
+        }, $statement->fetchAll());
+    }
+
     public function getPin(string $id, string $projectKey): ?array
     {
-        $statement = $this->pdo->prepare('SELECT * FROM pins WHERE id = :id AND project_key = :project_key AND deleted_at IS NULL LIMIT 1');
+        $statement = $this->pdo->prepare(
+            'SELECT p.*, u.color_index AS author_color_index
+             FROM pins p
+             LEFT JOIN project_users u ON u.project_key = p.project_key AND u.author_id = p.author_id
+             WHERE p.id = :id AND p.project_key = :project_key AND p.deleted_at IS NULL
+             LIMIT 1'
+        );
         $statement->execute(['id' => $id, 'project_key' => $projectKey]);
         $row = $statement->fetch();
         if (!is_array($row)) {
             return null;
         }
         $pin = $this->hydratePin($row);
-        $messages = $this->pdo->prepare('SELECT * FROM messages WHERE pin_id = :pin_id AND deleted_at IS NULL ORDER BY created_at ASC, id ASC');
-        $messages->execute(['pin_id' => $id]);
-        $pin['messages'] = $messages->fetchAll();
+        $messages = $this->pdo->prepare(
+            'SELECT m.*, u.color_index AS author_color_index
+             FROM messages m
+             LEFT JOIN project_users u ON u.project_key = :project_key AND u.author_id = m.author_id
+             WHERE m.pin_id = :pin_id AND m.deleted_at IS NULL
+             ORDER BY m.created_at ASC, m.id ASC'
+        );
+        $messages->execute(['pin_id' => $id, 'project_key' => $projectKey]);
+        $pin['messages'] = array_map(static function (array $message): array {
+            $message['author_color_index'] = isset($message['author_color_index']) ? (int) $message['author_color_index'] : 1;
+            return $message;
+        }, $messages->fetchAll());
         return $pin;
     }
 
@@ -92,6 +134,12 @@ final class Database implements StorageInterface
     {
         $this->pdo->beginTransaction();
         try {
+            $user = $this->ensureProjectUser(
+                (string) $pin['project_key'],
+                (string) $pin['author_id'],
+                (string) $pin['author_name'],
+                (string) $pin['created_at']
+            );
             $counter = $this->pdo->prepare('INSERT OR IGNORE INTO project_counters (project_key, next_number) VALUES (:project_key, 1)');
             $counter->execute(['project_key' => $pin['project_key']]);
             $select = $this->pdo->prepare('SELECT next_number FROM project_counters WHERE project_key = :project_key');
@@ -116,6 +164,7 @@ final class Database implements StorageInterface
             $this->insertMessage($message);
             $this->pdo->commit();
             $pin['first_message'] = $message['message'];
+            $pin['author_color_index'] = $user['color_index'];
             return $pin;
         } catch (Throwable $error) {
             if ($this->pdo->inTransaction()) {
@@ -135,11 +184,18 @@ final class Database implements StorageInterface
                 $this->pdo->rollBack();
                 throw new StorageNotFoundException('Pin not found.');
             }
+            $user = $this->ensureProjectUser(
+                (string) $message['project_key'],
+                (string) $message['author_id'],
+                (string) $message['author_name'],
+                (string) $message['created_at']
+            );
             unset($message['project_key']);
             $this->insertMessage($message);
             $updated = $this->pdo->prepare('UPDATE pins SET updated_at = :updated_at WHERE id = :id');
             $updated->execute(['updated_at' => $message['created_at'], 'id' => $message['pin_id']]);
             $this->pdo->commit();
+            $message['author_color_index'] = $user['color_index'];
             return $message;
         } catch (Throwable $error) {
             if ($this->pdo->inTransaction()) {
@@ -192,9 +248,10 @@ final class Database implements StorageInterface
     public function exportAll(): array
     {
         return [
-            'format_version' => 1,
+            'format_version' => 2,
             'exported_at' => gmdate('c'),
             'projects' => $this->pdo->query('SELECT project_key, next_number FROM project_counters ORDER BY project_key')->fetchAll(),
+            'users' => $this->pdo->query('SELECT project_key, author_id, author_name, color_index, sequence_number, created_at, updated_at FROM project_users ORDER BY project_key, sequence_number')->fetchAll(),
             'pins' => array_map(fn (array $row): array => $this->hydratePin($row), $this->pdo->query('SELECT * FROM pins ORDER BY project_key, pin_number')->fetchAll()),
             'messages' => $this->pdo->query('SELECT * FROM messages ORDER BY created_at, id')->fetchAll(),
         ];
@@ -207,13 +264,35 @@ final class Database implements StorageInterface
         }
         $this->pdo->beginTransaction();
         try {
-            $this->pdo->exec('DELETE FROM messages; DELETE FROM pins; DELETE FROM project_counters;');
+            $this->pdo->exec('DELETE FROM messages; DELETE FROM pins; DELETE FROM project_users; DELETE FROM project_counters;');
             $insertCounter = $this->pdo->prepare('INSERT INTO project_counters (project_key, next_number) VALUES (:project_key, :next_number)');
             foreach ($backup['projects'] as $project) {
                 if (!is_array($project)) throw new \InvalidArgumentException('Backup project is invalid.');
                 $insertCounter->execute([
                     'project_key' => Validation::projectKey($project['project_key'] ?? null),
                     'next_number' => max(1, (int) ($project['next_number'] ?? 1)),
+                ]);
+            }
+            $backupUsers = isset($backup['users']) && is_array($backup['users']) ? $backup['users'] : [];
+            $insertUser = $this->pdo->prepare(
+                'INSERT INTO project_users (project_key, author_id, author_name, color_index, sequence_number, created_at, updated_at)
+                 VALUES (:project_key, :author_id, :author_name, :color_index, :sequence_number, :created_at, :updated_at)'
+            );
+            foreach ($backupUsers as $user) {
+                if (!is_array($user)) throw new \InvalidArgumentException('Backup user is invalid.');
+                $colorIndex = (int) ($user['color_index'] ?? 0);
+                $sequenceNumber = (int) ($user['sequence_number'] ?? 0);
+                if ($colorIndex < 1 || $colorIndex > 10 || $sequenceNumber < 1) {
+                    throw new \InvalidArgumentException('Backup user color assignment is invalid.');
+                }
+                $insertUser->execute([
+                    'project_key' => Validation::projectKey($user['project_key'] ?? null),
+                    'author_id' => Validation::uuid($user['author_id'] ?? null, 'author_id'),
+                    'author_name' => Validation::string($user['author_name'] ?? null, 'author_name', 1, 80),
+                    'color_index' => $colorIndex,
+                    'sequence_number' => $sequenceNumber,
+                    'created_at' => (string) ($user['created_at'] ?? ''),
+                    'updated_at' => (string) ($user['updated_at'] ?? ''),
                 ]);
             }
             $insertPin = $this->pdo->prepare(
@@ -243,6 +322,7 @@ final class Database implements StorageInterface
                     'deleted_at' => isset($message['deleted_at']) && is_string($message['deleted_at']) ? $message['deleted_at'] : null,
                 ]);
             }
+            $this->backfillProjectUsers();
             $this->pdo->commit();
         } catch (Throwable $error) {
             if ($this->pdo->inTransaction()) $this->pdo->rollBack();
@@ -259,6 +339,9 @@ final class Database implements StorageInterface
             $select->execute($parameters);
             $ids = array_map('strval', $select->fetchAll(PDO::FETCH_COLUMN));
             if ($ids === []) {
+                if ($mode === 'purge') {
+                    $this->clearProjectUsers($scope, $projectKey);
+                }
                 $this->pdo->commit();
                 return ['pins' => 0, 'messages' => 0];
             }
@@ -283,6 +366,7 @@ final class Database implements StorageInterface
                     $reset = $this->pdo->prepare('DELETE FROM project_counters WHERE project_key = :project_key');
                     $reset->execute(['project_key' => $projectKey]);
                 }
+                $this->clearProjectUsers($scope, $projectKey);
             }
             $this->pdo->commit();
             return ['pins' => count($ids), 'messages' => $messages];
@@ -352,6 +436,17 @@ final class Database implements StorageInterface
                 project_key TEXT PRIMARY KEY,
                 next_number INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS project_users (
+                project_key TEXT NOT NULL,
+                author_id TEXT NOT NULL,
+                author_name TEXT NOT NULL,
+                color_index INTEGER NOT NULL CHECK (color_index BETWEEN 1 AND 10),
+                sequence_number INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (project_key, author_id),
+                UNIQUE (project_key, sequence_number)
+            );
             CREATE TABLE IF NOT EXISTS admin_log (
                 id TEXT PRIMARY KEY,
                 action TEXT NOT NULL,
@@ -364,6 +459,138 @@ final class Database implements StorageInterface
                 created_at TEXT NOT NULL
             );'
         );
+        $this->backfillProjectUsers();
+    }
+
+    /** @return array{color_index:int,sequence_number:int} */
+    private function ensureProjectUser(
+        string $projectKey,
+        string $authorId,
+        string $authorName,
+        string $createdAt,
+        ?string $updatedAt = null
+    ): array {
+        $updatedAt ??= $createdAt;
+        $select = $this->pdo->prepare(
+            'SELECT author_name, color_index, sequence_number FROM project_users
+             WHERE project_key = :project_key AND author_id = :author_id LIMIT 1'
+        );
+        $parameters = ['project_key' => $projectKey, 'author_id' => $authorId];
+        $select->execute($parameters);
+        $existing = $select->fetch();
+        if (is_array($existing)) {
+            if ((string) $existing['author_name'] !== $authorName) {
+                $update = $this->pdo->prepare(
+                    'UPDATE project_users SET author_name = :author_name, updated_at = :updated_at
+                     WHERE project_key = :project_key AND author_id = :author_id'
+                );
+                $update->execute($parameters + ['author_name' => $authorName, 'updated_at' => $updatedAt]);
+            }
+            return [
+                'color_index' => (int) $existing['color_index'],
+                'sequence_number' => (int) $existing['sequence_number'],
+            ];
+        }
+
+        $nextSequence = $this->pdo->prepare('SELECT COALESCE(MAX(sequence_number), 0) + 1 FROM project_users WHERE project_key = :project_key');
+        $insert = $this->pdo->prepare(
+            'INSERT OR IGNORE INTO project_users (project_key, author_id, author_name, color_index, sequence_number, created_at, updated_at)
+             VALUES (:project_key, :author_id, :author_name, :color_index, :sequence_number, :created_at, :updated_at)'
+        );
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $nextSequence->execute(['project_key' => $projectKey]);
+            $sequenceNumber = (int) $nextSequence->fetchColumn();
+            $colorIndex = (($sequenceNumber - 1) % 10) + 1;
+            $insert->execute([
+                'project_key' => $projectKey,
+                'author_id' => $authorId,
+                'author_name' => $authorName,
+                'color_index' => $colorIndex,
+                'sequence_number' => $sequenceNumber,
+                'created_at' => $createdAt,
+                'updated_at' => $updatedAt,
+            ]);
+            $select->execute($parameters);
+            $created = $select->fetch();
+            if (is_array($created)) {
+                return [
+                    'color_index' => (int) $created['color_index'],
+                    'sequence_number' => (int) $created['sequence_number'],
+                ];
+            }
+        }
+        throw new \RuntimeException('Unable to assign a project user color.');
+    }
+
+    private function backfillProjectUsers(): void
+    {
+        if ((int) $this->pdo->query('SELECT COUNT(*) FROM project_users')->fetchColumn() > 0) {
+            return;
+        }
+        $ownsTransaction = !$this->pdo->inTransaction();
+        if ($ownsTransaction) {
+            $this->pdo->beginTransaction();
+        }
+        try {
+            $rows = $this->pdo->query(
+                'SELECT project_key, author_id, author_name, created_at FROM pins
+                 UNION ALL
+                 SELECT p.project_key, m.author_id, m.author_name, m.created_at
+                 FROM messages m INNER JOIN pins p ON p.id = m.pin_id
+                 ORDER BY project_key, created_at, author_id'
+            )->fetchAll();
+            $authors = [];
+            foreach ($rows as $row) {
+                $key = (string) $row['project_key'] . "\0" . (string) $row['author_id'];
+                $createdAt = (string) $row['created_at'];
+                if (!isset($authors[$key])) {
+                    $authors[$key] = [
+                        'project_key' => (string) $row['project_key'],
+                        'author_id' => (string) $row['author_id'],
+                        'author_name' => (string) $row['author_name'],
+                        'created_at' => $createdAt,
+                        'updated_at' => $createdAt,
+                    ];
+                    continue;
+                }
+                if ($createdAt >= $authors[$key]['updated_at']) {
+                    $authors[$key]['author_name'] = (string) $row['author_name'];
+                    $authors[$key]['updated_at'] = $createdAt;
+                }
+            }
+            uasort($authors, static fn (array $a, array $b): int =>
+                [$a['project_key'], $a['created_at'], $a['author_id']] <=> [$b['project_key'], $b['created_at'], $b['author_id']]
+            );
+            foreach ($authors as $author) {
+                $this->ensureProjectUser(
+                    $author['project_key'],
+                    $author['author_id'],
+                    $author['author_name'],
+                    $author['created_at'],
+                    $author['updated_at']
+                );
+            }
+            if ($ownsTransaction) {
+                $this->pdo->commit();
+            }
+        } catch (Throwable $error) {
+            if ($ownsTransaction && $this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            throw $error;
+        }
+    }
+
+    private function clearProjectUsers(string $scope, string $projectKey): void
+    {
+        if ($scope === 'all_projects') {
+            $this->pdo->exec('DELETE FROM project_users');
+            return;
+        }
+        if ($scope === 'current_project') {
+            $statement = $this->pdo->prepare('DELETE FROM project_users WHERE project_key = :project_key');
+            $statement->execute(['project_key' => $projectKey]);
+        }
     }
 
     /** @param array<string, mixed> $message */
@@ -410,6 +637,7 @@ final class Database implements StorageInterface
     private function hydratePin(array $row): array
     {
         $row['pin_number'] = (int) $row['pin_number'];
+        $row['author_color_index'] = isset($row['author_color_index']) ? (int) $row['author_color_index'] : 1;
         $row['target_fingerprint'] = json_decode((string) $row['target_fingerprint_json'], true, 64, JSON_THROW_ON_ERROR);
         $row['anchor'] = json_decode((string) $row['anchor_json'], true, 64, JSON_THROW_ON_ERROR);
         $row['viewport'] = json_decode((string) $row['viewport_json'], true, 64, JSON_THROW_ON_ERROR);
@@ -421,8 +649,17 @@ final class Database implements StorageInterface
     /** @return array{0:string,1:array<string,string>} */
     private function clearWhere(string $scope, string $projectKey, string $pageKey): array
     {
+        if ($scope === 'current_page') {
+            $parameters = ['project_key' => $projectKey];
+            $placeholders = [];
+            foreach (Validation::compatiblePageKeys($pageKey) as $index => $candidate) {
+                $name = 'page_key_' . $index;
+                $placeholders[] = ':' . $name;
+                $parameters[$name] = $candidate;
+            }
+            return ['project_key = :project_key AND page_key IN (' . implode(', ', $placeholders) . ')', $parameters];
+        }
         return match ($scope) {
-            'current_page' => ['project_key = :project_key AND page_key = :page_key', ['project_key' => $projectKey, 'page_key' => $pageKey]],
             'current_project' => ['project_key = :project_key', ['project_key' => $projectKey]],
             'resolved_in_project' => ['project_key = :project_key AND status = \'resolved\'', ['project_key' => $projectKey]],
             'all_projects' => ['1 = 1', []],

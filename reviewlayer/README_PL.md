@@ -1,6 +1,6 @@
 # ReviewLayer
 
-ReviewLayer 1.1.20 to niezależna nakładka do komentowania prototypów stron. Klient może przypiąć uwagę do elementu strony, prowadzić rozmowę, oznaczyć ją jako rozwiązaną i wrócić do niej na innym urządzeniu. Instalacja działa bez Node.js, procesu build, MySQL, CDN i usług SaaS.
+ReviewLayer 1.2.3 to niezależna nakładka do komentowania prototypów stron. Klient może przypiąć uwagę do elementu strony, prowadzić rozmowę, oznaczyć ją jako rozwiązaną i wrócić do niej na innym urządzeniu. Instalacja działa bez Node.js, procesu build, MySQL, CDN i usług SaaS.
 
 ## Wymagania serwera
 
@@ -85,11 +85,14 @@ Kod znajduje się wyłącznie w wykonywanym po stronie serwera `config.php`. Nie
 
 Przy pierwszym komentarzu formularz prosi o imię. Imię i losowy UUID autora są zapisywane w `localStorage`; imię można zmienić w ustawieniach.
 
+Każdy nowy komentujący w projekcie otrzymuje kolejny kolor z palety dziesięciu barw; jedenasty użytkownik ponownie dostaje kolor pierwszy. Pinezki i etykiety autora zachowują to przypisanie, rozwiązane pinezki używają mniej nasyconego odpowiednika, a Ustawienia pokazują wszystkich zarejestrowanych komentujących projektu. Zmiana wyświetlanego imienia nie zmienia koloru.
+
 1. Kliknij „Dodaj pinezkę”.
 2. Wskaż miejsce na stronie. Podświetlenie jest częścią nakładki i nie modyfikuje elementu prototypu.
 3. Wpisz pierwszą uwagę i zapisz. Anulowanie lub `Escape` usuwa pinezkę tymczasową.
 4. Kliknij zapisaną pinezkę, aby otworzyć rozmowę, odpowiedzieć, zmienić status, usunąć wiadomość lub całą pinezkę.
 5. Przycisk odświeżenia pobiera aktualną rozmowę ręcznie.
+6. „Pokaż pinezkę” w nagłówku rozmowy zamyka panel, w razie potrzeby odsłania pinezkę, przewija ją do widoku i krótko podświetla.
 
 Komentarze są renderowane wyłącznie jako tekst. Data pochodzi z serwera UTC i jest wyświetlana lokalnie.
 

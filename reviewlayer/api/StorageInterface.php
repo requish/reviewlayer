@@ -14,6 +14,9 @@ interface StorageInterface
     /** @return array<int, array<string, mixed>> */
     public function listProjectPins(string $projectKey): array;
 
+    /** @return array<int, array<string, mixed>> */
+    public function listProjectUsers(string $projectKey): array;
+
     /** @return array<string, mixed>|null */
     public function getPin(string $id, string $projectKey): ?array;
 

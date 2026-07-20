@@ -218,6 +218,12 @@ try {
         ReviewLayer\respond(true, ['pins' => $storage->listProjectPins($projectKey)], null);
     }
 
+    if ($action === 'list-project-users') {
+        ReviewLayer\requireMethod('GET');
+        $projectKey = Validation::projectKey($_GET['project_key'] ?? null);
+        ReviewLayer\respond(true, ['users' => $storage->listProjectUsers($projectKey)], null);
+    }
+
     if ($action === 'get-pin') {
         ReviewLayer\requireMethod('GET');
         $projectKey = Validation::projectKey($_GET['project_key'] ?? null);

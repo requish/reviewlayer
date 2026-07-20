@@ -55,6 +55,12 @@ try {
     if ($created['pin_number'] !== 1 || count($storage->listPins('json-smoke', 'https://example.com/')) !== 1) {
         throw new RuntimeException('JSON create/list assertion failed.');
     }
+    if (count($storage->listPins('json-smoke', 'http://www.example.com/')) !== 1) {
+        throw new RuntimeException('HTTP/HTTPS and www page aliases were not matched.');
+    }
+    if (count($storage->listPins('json-smoke', 'http://www.example.com:8080/')) !== 0) {
+        throw new RuntimeException('A non-default port was incorrectly treated as a page alias.');
+    }
 
     $secondPinId = '55555555-5555-4555-8555-555555555555';
     $secondPin = $pin;
