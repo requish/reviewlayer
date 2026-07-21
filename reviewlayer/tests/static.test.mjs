@@ -32,6 +32,12 @@ test('test page integrates ReviewLayer through one script tag only', async () =>
   assert.match(head, /<script src="\/reviewlayer\/embed\.js" data-project="default" data-lang="en" defer><\/script>\s*<meta name="robots" content="noindex,nofollow">/);
 });
 
+test('demo hue rotation leaves the ReviewLayer host unfiltered', async () => {
+  const demoCss = await readFile(resolve(projectDirectory, 'assets/reviewlayer-demo.css'), 'utf8');
+  assert.match(demoCss, /\.skip-link,\s*\.site-header,\s*main,\s*\.site-footer\s*\{\s*filter:\s*hue-rotate\(330deg\);\s*\}/);
+  assert.doesNotMatch(demoCss, /#reviewlayer-host[^\{]*\{[^\}]*filter:/);
+});
+
 test('embed discovers its own base URL and has no configured API URL', async () => {
   const embed = await read('embed.js');
   assert.match(embed, /language: script\.dataset\.lang \|\| 'en'/);
