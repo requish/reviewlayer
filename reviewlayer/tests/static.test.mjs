@@ -283,7 +283,9 @@ test('commenters receive persistent cycling colors visible across pins, messages
   assert.match(database, /\(\(\$sequenceNumber - 1\) % 10\) \+ 1/);
   assert.match(jsonStorage, /\(\(\$sequenceNumber - 1\) % 10\) \+ 1/);
   assert.match(css, /\.rl-pin\.is-resolved[\s\S]*var\(--rl-author-resolved-color/);
-  assert.match(css, /\.rl-author-badge[\s\S]*padding:\s*1px 6px;[\s\S]*color:\s*#fff;[\s\S]*border-radius:\s*2px;/);
+  assert.match(css, /\.rl-author-badge\s*\{[^}]*padding:\s*1px 6px;[^}]*color:\s*#fff;[^}]*font-size:\s*12px;[^}]*border-radius:\s*2px;/);
+  assert.match(css, /\.rl-project-pin-head \.rl-author-badge\s*\{[^}]*font-size:\s*12px;/);
+  assert.match(css, /\.rl-message-head \.rl-author-badge\s*\{[^}]*font-size:\s*12px;/);
 });
 
 test('device badges identify pin viewport on markers, conversations, and project list', async () => {
