@@ -57,6 +57,7 @@ $storage = new class($authorId, $secondAuthorId) implements StorageInterface {
     public function listPins(string $projectKey, string $pageKey): array
     {
         return [
+            ['id' => '55555555-5555-4555-8555-555555555555', 'pin_number' => 1],
             ['id' => '33333333-3333-4333-8333-333333333333', 'pin_number' => 2],
             ['id' => '44444444-4444-4444-8444-444444444444', 'pin_number' => 3],
         ];
@@ -78,10 +79,32 @@ $storage = new class($authorId, $secondAuthorId) implements StorageInterface {
     public function getPin(string $id, string $projectKey): ?array
     {
         if ($id === '33333333-3333-4333-8333-333333333333') {
-            return ['messages' => [['message' => 'First'], ['message' => 'Reply']]];
+            return [
+                'author_id' => $this->secondAuthorId,
+                'created_at' => '2026-01-04T00:00:00Z',
+                'messages' => [
+                    ['author_id' => $this->secondAuthorId, 'created_at' => '2026-01-04T00:00:00Z'],
+                    ['author_id' => $this->authorId, 'created_at' => '2026-01-04T00:01:00Z'],
+                ],
+            ];
         }
         if ($id === '44444444-4444-4444-8444-444444444444') {
-            return ['messages' => [['message' => 'First']]];
+            return [
+                'author_id' => $this->authorId,
+                'created_at' => '2026-01-05T00:00:00Z',
+                'messages' => [
+                    ['author_id' => $this->authorId, 'created_at' => '2026-01-05T00:00:00Z'],
+                ],
+            ];
+        }
+        if ($id === '55555555-5555-4555-8555-555555555555') {
+            return [
+                'author_id' => $this->secondAuthorId,
+                'created_at' => '2026-01-03T00:00:00Z',
+                'messages' => [
+                    ['author_id' => $this->secondAuthorId, 'created_at' => '2026-01-03T00:00:00Z'],
+                ],
+            ];
         }
         return null;
     }
@@ -110,19 +133,19 @@ try {
     $service = new NotificationService($temporary, $config);
     notificationAssert($service->isAvailable(), 'Notification service should be available in the smoke test.');
     $notificationItems = new ReflectionMethod($service, 'notificationItems');
-    $items = $notificationItems->invoke($service, $storage, 'default', 'https://reviewlayer.example.com/');
+    $items = $notificationItems->invoke($service, $storage, 'default', 'https://reviewlayer.example.com/', $authorId);
     notificationAssert($items === [
-        ['pin_number' => 3, 'has_reply' => false],
-        ['pin_number' => 2, 'has_reply' => true],
-    ], 'Notification items must list the newest pin first and identify replies without exposing content.');
+        ['pin_number' => 3, 'type' => 'pin'],
+        ['pin_number' => 2, 'type' => 'comment', 'comment_count' => 1],
+    ], 'Notification items must contain only pins and comments authored by the sender.');
     $mailer = new ReviewLayer\NativeMailService($config);
     $notificationDigest = new ReflectionMethod($mailer, 'notificationDigest');
     notificationAssert(
-        $notificationDigest->invoke($mailer, $items, false) === "Pin #3\nPin #2 — reply",
+        $notificationDigest->invoke($mailer, $items, false) === "Pin #3\nPin #2 — comment",
         'The English notification digest must contain pin metadata only.'
     );
     notificationAssert(
-        $notificationDigest->invoke($mailer, $items, true) === "Pinezka #3\nPinezka #2 — odpowiedź",
+        $notificationDigest->invoke($mailer, $items, true) === "Pinezka #3\nPinezka #2 — komentarz",
         'The Polish notification digest must contain pin metadata only.'
     );
     $firstSecret = str_repeat('a', 64);

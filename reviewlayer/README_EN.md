@@ -1,6 +1,6 @@
 # ReviewLayer
 
-ReviewLayer 1.3.3 is an independent annotation overlay for website prototypes. Clients can attach a note to a page element, discuss it, resolve it, and revisit it on another device. Installation needs no Node.js, build process, MySQL, CDN, or SaaS service.
+ReviewLayer 1.3.4 is an independent annotation overlay for website prototypes. Clients can attach a note to a page element, discuss it, resolve it, and revisit it on another device. Installation needs no Node.js, build process, MySQL, CDN, or SaaS service.
 
 ## Server requirements
 
@@ -95,7 +95,7 @@ Each new commenter in a project receives the next color from a ten-color palette
 
 The outgoing-mail icon opens the project commenter list. Selecting “Notify…” sends one short localized message immediately through the server's native PHP mail transport. ReviewLayer never sends email on a timer, after a new comment, or from cron. Every message requires an explicit click. The recipient's saved ReviewLayer language selects the Polish or English template.
 
-The message lists the pin numbers from the current page, newest first, and marks threads that contain a reply. Comment text is never included in the email.
+The message lists only pins created by the sender and comments added by that sender on the current page, newest pins first. Unrelated pins and comment text are never included in the email.
 
 A commenter can add an address in Settings after creating a pin or comment. A single-use confirmation link must be opened before that person can receive notifications. Other browsers receive only the commenter's display name and a ready/not-ready flag; the address itself is never returned by the API. The sender chooses an opaque recipient ID, not an arbitrary email address.
 

@@ -1,6 +1,6 @@
 # ReviewLayer
 
-ReviewLayer 1.3.3 to niezależna nakładka do komentowania prototypów stron. Klient może przypiąć uwagę do elementu strony, prowadzić rozmowę, oznaczyć ją jako rozwiązaną i wrócić do niej na innym urządzeniu. Instalacja działa bez Node.js, procesu build, MySQL, CDN i usług SaaS.
+ReviewLayer 1.3.4 to niezależna nakładka do komentowania prototypów stron. Klient może przypiąć uwagę do elementu strony, prowadzić rozmowę, oznaczyć ją jako rozwiązaną i wrócić do niej na innym urządzeniu. Instalacja działa bez Node.js, procesu build, MySQL, CDN i usług SaaS.
 
 ## Wymagania serwera
 
@@ -95,7 +95,7 @@ Każdy nowy komentujący w projekcie otrzymuje kolejny kolor z palety dziesięci
 
 Ikona wysyłania otwiera listę komentujących w projekcie. Kliknięcie „Powiadom…” wysyła jedną krótką wiadomość wprost przez natywny transport pocztowy PHP serwera. ReviewLayer nigdy nie wysyła e-maili po dodaniu komentarza, według harmonogramu ani z crona. Każda wiadomość wymaga świadomego kliknięcia. Polski lub angielski szablon jest wybierany na podstawie języka zapisanego przez odbiorcę.
 
-Wiadomość wymienia numery pinezek z bieżącej strony, zaczynając od najnowszej, oraz oznacza wątki zawierające odpowiedź. Treść komentarzy nigdy nie jest umieszczana w e-mailu.
+Wiadomość wymienia wyłącznie pinezki utworzone przez nadawcę oraz komentarze dodane przez niego na bieżącej stronie, zaczynając od najnowszych pinezek. Niepowiązane pinezki ani treść komentarzy nigdy nie są umieszczane w e-mailu.
 
 Komentujący może dodać adres w Ustawieniach po utworzeniu pinezki lub komentarza. Zanim będzie można go powiadamiać, musi otworzyć jednorazowy link potwierdzający. Inne przeglądarki otrzymują wyłącznie imię oraz informację gotowy/brak adresu; sam e-mail nigdy nie jest zwracany przez API. Nadawca wybiera nieprzewidywalny identyfikator odbiorcy, a nie dowolny adres e-mail.
 

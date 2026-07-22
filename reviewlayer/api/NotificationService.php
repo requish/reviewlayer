@@ -442,7 +442,7 @@ final class NotificationService
             throw new NotificationException('VALIDATION_ERROR', 'You cannot notify yourself.');
         }
         $pageUrl = Validation::canonicalPageKey(Validation::pageUrl($pageUrl));
-        $notificationItems = $this->notificationItems($storage, $projectKey, $pageUrl);
+        $notificationItems = $this->notificationItems($storage, $projectKey, $pageUrl, (string) $sender['author_id']);
         $deliveryId = $this->reserveDelivery($projectKey, (string) $sender['author_id'], $recipientId);
         try {
             $email = $this->decrypt((string) $recipient['email_ciphertext']);
@@ -468,8 +468,8 @@ final class NotificationService
         }
     }
 
-    /** @return list<array{pin_number:int,has_reply:bool}> */
-    private function notificationItems(StorageInterface $storage, string $projectKey, string $pageUrl): array
+    /** @return list<array{pin_number:int,type:string,comment_count?:int}> */
+    private function notificationItems(StorageInterface $storage, string $projectKey, string $pageUrl, string $senderAuthorId): array
     {
         $items = [];
         foreach (array_reverse($storage->listPins($projectKey, $pageUrl)) as $pin) {
@@ -479,10 +479,25 @@ final class NotificationService
             $fullPin = $storage->getPin($pinId, $projectKey);
             if ($fullPin === null) continue;
             $messages = isset($fullPin['messages']) && is_array($fullPin['messages']) ? $fullPin['messages'] : [];
-            $items[] = [
-                'pin_number' => $pinNumber,
-                'has_reply' => count($messages) > 1,
-            ];
+            $pinCreatedBySender = hash_equals((string) ($fullPin['author_id'] ?? ''), $senderAuthorId);
+            if ($pinCreatedBySender) {
+                $items[] = ['pin_number' => $pinNumber, 'type' => 'pin'];
+            }
+            $commentCount = 0;
+            foreach ($messages as $messageIndex => $message) {
+                if (!hash_equals((string) ($message['author_id'] ?? ''), $senderAuthorId)) continue;
+                $isInitialPinComment = $pinCreatedBySender
+                    && $messageIndex === 0
+                    && (string) ($message['created_at'] ?? '') === (string) ($fullPin['created_at'] ?? '');
+                if (!$isInitialPinComment) $commentCount++;
+            }
+            if ($commentCount > 0) {
+                $items[] = [
+                    'pin_number' => $pinNumber,
+                    'type' => 'comment',
+                    'comment_count' => $commentCount,
+                ];
+            }
         }
         return $items;
     }

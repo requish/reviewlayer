@@ -67,7 +67,7 @@ final class NativeMailService
         $digest = $this->notificationDigest($items, $polish);
         $digestBlock = $digest === ''
             ? ''
-            : ($polish ? "\n\nPinezki:\n{$digest}" : "\n\nPins:\n{$digest}");
+            : ($polish ? "\n\nZmiany do sprawdzenia:\n{$digest}" : "\n\nChanges to review:\n{$digest}");
         $subject = $polish ? 'ReviewLayer: nowe komentarze w projekcie' : 'ReviewLayer: new project comments';
         $body = $polish
             ? "Cześć {$recipientName},\n\n{$senderName} prosi o sprawdzenie komentarzy w projekcie „{$projectKey}”.{$digestBlock}\n\nOtwórz stronę projektu:\n{$pageUrl}\n\nTa wiadomość została wysłana ręcznie z ReviewLayer.\n\nReviewLayer"
@@ -75,7 +75,7 @@ final class NativeMailService
         return $this->send($recipient, $subject, $body);
     }
 
-    /** @param list<array{pin_number:int,has_reply:bool}> $items */
+    /** @param list<array{pin_number:int,type:string,comment_count?:int}> $items */
     private function notificationDigest(array $items, bool $polish): string
     {
         $lines = [];
@@ -83,8 +83,13 @@ final class NativeMailService
             $pinNumber = (int) ($item['pin_number'] ?? 0);
             if ($pinNumber < 1) continue;
             $label = ($polish ? 'Pinezka #' : 'Pin #') . $pinNumber;
-            if (($item['has_reply'] ?? false) === true) {
-                $label .= $polish ? ' — odpowiedź' : ' — reply';
+            if (($item['type'] ?? '') === 'comment') {
+                $commentCount = max(1, (int) ($item['comment_count'] ?? 1));
+                if ($commentCount === 1) {
+                    $label .= $polish ? ' — komentarz' : ' — comment';
+                } else {
+                    $label .= $polish ? " — komentarze ({$commentCount})" : " — comments ({$commentCount})";
+                }
             }
             $lines[] = $label;
         }
