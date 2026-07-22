@@ -3,7 +3,7 @@
   font-style: normal;
   font-weight: 400;
   font-display: block;
-  src: url("fonts/material-symbols-outlined.woff2?v=1.2.8") format("woff2");
+  src: url("fonts/material-symbols-outlined.woff2?v=1.2.9") format("woff2");
 }
 
 :host {
@@ -476,6 +476,28 @@ summary:focus-visible {
   height: 32px;
   margin-left: auto;
   font-size: 21px;
+}
+
+.rl-project-pins-trigger {
+  position: relative;
+}
+
+.rl-toolbar-unread {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 9px;
+  height: 9px;
+  display: none;
+  background: #2475e8;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(36, 117, 232, .35);
+  pointer-events: none;
+}
+
+.rl-project-pins-trigger.has-unread .rl-toolbar-unread {
+  display: block;
 }
 
 .rl-filters {

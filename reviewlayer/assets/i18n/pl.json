@@ -9,6 +9,7 @@
   "pinsVisible": "Pinezki widoczne.",
   "pinsHidden": "Pinezki ukryte.",
   "allProjectPins": "Wszystkie pinezki",
+  "allProjectPinsUnread": "Wszystkie pinezki — nowe komentarze",
   "projectPinsIntro": "Pinezki w projekcie „{project}”: {count}.",
   "noProjectPins": "W tym projekcie nie ma jeszcze pinezek.",
   "openProjectPin": "Otwórz pinezkę #{number} na stronie {page}",

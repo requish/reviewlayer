@@ -9,6 +9,7 @@
   "pinsVisible": "Pins visible.",
   "pinsHidden": "Pins hidden.",
   "allProjectPins": "All pins",
+  "allProjectPinsUnread": "All pins — new comments",
   "projectPinsIntro": "Pins in project “{project}”: {count}.",
   "noProjectPins": "There are no pins in this project yet.",
   "openProjectPin": "Open pin #{number} on page {page}",

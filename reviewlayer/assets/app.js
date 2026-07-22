@@ -11,7 +11,7 @@ import {
   removeReviewLayerParameters
 } from './page-key.js';
 
-const VERSION = '1.2.8';
+const VERSION = '1.2.9';
 const MATERIAL_ICON_FONT_FAMILY = 'ReviewLayer Material Symbols';
 const FILTERS = ['all', 'mobile', 'tablet', 'desktop'];
 const DEVICE_ICONS = Object.freeze({
@@ -271,6 +271,8 @@ class ReviewLayerApp {
     this.tempTarget = null;
     this.routeController = null;
     this.panelController = null;
+    this.projectPinsRefreshController = null;
+    this.projectPinsRefreshedAt = 0;
     this.positionFrame = 0;
     this.mutationTimer = 0;
     this.returnFocus = null;
@@ -351,6 +353,36 @@ class ReviewLayerApp {
     return '';
   }
 
+  updateProjectPinsIndicator() {
+    const button = this.root?.querySelector('[data-action="project-pins"]');
+    if (!button) return;
+    const hasUnread = this.projectPins.some((pin) => Boolean(this.projectPinUnreadType(pin)));
+    const label = this.t(hasUnread ? 'allProjectPinsUnread' : 'allProjectPins');
+    button.classList.toggle('has-unread', hasUnread);
+    button.setAttribute('aria-label', label);
+    button.title = label;
+  }
+
+  async refreshProjectPinsIndicator(force = false) {
+    const now = Date.now();
+    if (!force && (this.projectPinsRefreshController || now - this.projectPinsRefreshedAt < 30000)) return;
+    this.projectPinsRefreshedAt = now;
+    this.projectPinsRefreshController?.abort();
+    const controller = new AbortController();
+    this.projectPinsRefreshController = controller;
+    try {
+      const data = await this.api.listProjectPins(this.projectKey, controller.signal);
+      this.projectPins = data.pins || [];
+      this.prepareProjectReadState(this.projectPins);
+      this.updateProjectPinsIndicator();
+      if (this.panelType === 'project-pins') this.renderProjectPins();
+    } catch (error) {
+      if (error.name !== 'AbortError') console.warn('[ReviewLayer] Unable to refresh project activity.', error);
+    } finally {
+      if (this.projectPinsRefreshController === controller) this.projectPinsRefreshController = null;
+    }
+  }
+
   markProjectPinRead(pinOrId, announce = false) {
     if (!this.projectReadState.initialized) return;
     const pin = typeof pinOrId === 'string'
@@ -361,6 +393,7 @@ class ReviewLayerApp {
     if (!pin?.id) return;
     this.projectReadState.pins[pin.id] = this.projectPinSnapshot(pin);
     this.saveProjectReadState();
+    this.updateProjectPinsIndicator();
     if (this.panelType === 'project-pins') this.renderProjectPins();
     if (announce) this.showToast(this.t('markedAsRead'));
   }
@@ -385,6 +418,7 @@ class ReviewLayerApp {
     try {
       this.bootstrapData = await this.api.bootstrap();
       await this.navigate(true);
+      void this.refreshProjectPinsIndicator(true);
     } catch (error) {
       this.handleError(error);
       if (hasClearParameter()) this.openAdminPanel();
@@ -431,7 +465,7 @@ class ReviewLayerApp {
           <button class="rl-position-switch" type="button" role="switch" aria-checked="${this.toolbarPosition === 'top'}" data-action="toggle-toolbar-position" aria-label="${escapeHtml(this.t(this.toolbarPosition === 'bottom' ? 'moveToolbarTop' : 'moveToolbarBottom'))}" title="${escapeHtml(this.t(this.toolbarPosition === 'bottom' ? 'moveToolbarTop' : 'moveToolbarBottom'))}"><span aria-hidden="true"></span></button>
           <span class="rl-position-icon${this.toolbarPosition === 'top' ? ' is-active' : ''}" data-position="top" aria-hidden="true">${positionIcon('up')}</span>
         </div>
-        <button class="rl-icon-button" type="button" data-action="project-pins" aria-label="${escapeHtml(this.t('allProjectPins'))}" title="${escapeHtml(this.t('allProjectPins'))}">${menuIcon()}</button>
+        <button class="rl-icon-button rl-project-pins-trigger" type="button" data-action="project-pins" aria-label="${escapeHtml(this.t('allProjectPins'))}" title="${escapeHtml(this.t('allProjectPins'))}">${menuIcon()}<span class="rl-toolbar-unread" aria-hidden="true"></span></button>
         <button class="rl-icon-button" type="button" data-action="settings" aria-label="${escapeHtml(this.t('settings'))}" title="${escapeHtml(this.t('settings'))}">${settingsIcon()}</button>
       </div>
       <section class="rl-panel" data-role="panel" aria-live="polite" hidden></section>
@@ -443,6 +477,7 @@ class ReviewLayerApp {
     this.instruction = this.root.querySelector('[data-role="instruction"]');
     this.panel = this.root.querySelector('[data-role="panel"]');
     this.toast = this.root.querySelector('[data-role="toast"]');
+    this.updateProjectPinsIndicator();
     this.renderPins();
     if (this.adding) this.setAddModeUi(true);
   }
@@ -461,6 +496,7 @@ class ReviewLayerApp {
     window.addEventListener('popstate', () => this.navigate());
     window.addEventListener('hashchange', () => this.navigate());
     window.addEventListener('reviewlayer:navigation', () => this.navigate());
+    window.addEventListener('focus', () => this.refreshProjectPinsIndicator());
   }
 
   observePage() {
@@ -1197,6 +1233,7 @@ class ReviewLayerApp {
       const data = await this.api.listProjectPins(this.projectKey, this.panelController.signal);
       this.projectPins = data.pins || [];
       this.prepareProjectReadState(this.projectPins);
+      this.updateProjectPinsIndicator();
       this.renderProjectPins();
     } catch (error) {
       if (error.name !== 'AbortError') this.handleError(error);

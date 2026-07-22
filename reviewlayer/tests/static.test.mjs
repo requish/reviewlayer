@@ -277,6 +277,10 @@ test('project pin list tracks new pins and replies in browser-local read state',
   assert.match(app, /this\.prepareProjectReadState\(this\.projectPins\)/);
   assert.match(app, /data-action="mark-project-pin-read"/);
   assert.match(app, /this\.markProjectPinRead\(this\.currentPin\)/);
+  assert.match(app, /refreshProjectPinsIndicator\(force = false\)/);
+  assert.match(app, /window\.addEventListener\('focus', \(\) => this\.refreshProjectPinsIndicator\(\)\)/);
+  assert.match(app, /class="rl-icon-button rl-project-pins-trigger"[\s\S]*class="rl-toolbar-unread"/);
+  assert.match(app, /button\.classList\.toggle\('has-unread', hasUnread\)/);
   assert.match(app, /data-action="back-project-pins"/);
   assert.match(app, /this\.openConversation\(requestedPinId, false, true\)/);
   assert.match(app, /this\.openConversation\(pin\.id, false, true\)/);
@@ -287,7 +291,10 @@ test('project pin list tracks new pins and replies in browser-local read state',
   assert.match(css, /\.rl-panel-back > \.rl-material-icon\s*\{[\s\S]*transform:\s*rotate\(180deg\)/);
   assert.match(css, /\.rl-unread-indicator > span[\s\S]*background:\s*#2475e8/);
   assert.match(css, /\.rl-unread-indicator\.is-new-replies > span[\s\S]*background:\s*#ed7b24/);
+  assert.match(css, /\.rl-toolbar-unread\s*\{[\s\S]*background:\s*#2475e8/);
+  assert.match(css, /\.rl-project-pins-trigger\.has-unread \.rl-toolbar-unread\s*\{[\s\S]*display:\s*block/);
   for (const translations of [en, pl]) {
+    assert.ok(translations.allProjectPinsUnread);
     assert.ok(translations.unreadNewPin);
     assert.ok(translations.unreadReplies);
     assert.ok(translations.markedAsRead);
