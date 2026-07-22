@@ -452,8 +452,17 @@ try {
         ReviewLayer\requireMethod('PATCH', 'POST');
         $projectKey = Validation::projectKey($body['project_key'] ?? null);
         $id = Validation::uuid($_GET['id'] ?? null);
-        Validation::uuid($body['author_id'] ?? null, 'author_id');
-        $updated = $storage->updatePinStatus($id, $projectKey, Validation::status($body['status'] ?? null), gmdate('c'));
+        $authorId = $notifications->resolveAuthorId(
+            $projectKey,
+            Validation::uuid($body['author_id'] ?? null, 'author_id')
+        );
+        $updated = $storage->updatePinStatus(
+            $id,
+            $projectKey,
+            Validation::status($body['status'] ?? null),
+            $authorId,
+            gmdate('c')
+        );
         if (!$updated) {
             ReviewLayer\respond(false, null, ['code' => 'NOT_FOUND', 'message' => 'Pin not found.'], 404);
         }

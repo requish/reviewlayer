@@ -468,7 +468,7 @@ final class NotificationService
         }
     }
 
-    /** @return list<array{pin_number:int,type:string,comment_count?:int}> */
+    /** @return list<array{pin_number:int,events:list<array{id:string,type:string,created_at:string}>}> */
     private function notificationItems(StorageInterface $storage, string $projectKey, string $pageUrl, string $senderAuthorId): array
     {
         $items = [];
@@ -480,24 +480,32 @@ final class NotificationService
             if ($fullPin === null) continue;
             $messages = isset($fullPin['messages']) && is_array($fullPin['messages']) ? $fullPin['messages'] : [];
             $pinCreatedBySender = hash_equals((string) ($fullPin['author_id'] ?? ''), $senderAuthorId);
-            if ($pinCreatedBySender) {
-                $items[] = ['pin_number' => $pinNumber, 'type' => 'pin'];
-            }
-            $commentCount = 0;
+            $events = [];
             foreach ($messages as $messageIndex => $message) {
                 if (!hash_equals((string) ($message['author_id'] ?? ''), $senderAuthorId)) continue;
                 $isInitialPinComment = $pinCreatedBySender
                     && $messageIndex === 0
                     && (string) ($message['created_at'] ?? '') === (string) ($fullPin['created_at'] ?? '');
-                if (!$isInitialPinComment) $commentCount++;
-            }
-            if ($commentCount > 0) {
-                $items[] = [
-                    'pin_number' => $pinNumber,
+                if ($isInitialPinComment) continue;
+                $events[] = [
+                    'id' => (string) ($message['id'] ?? 'message-' . $messageIndex),
                     'type' => 'comment',
-                    'comment_count' => $commentCount,
+                    'created_at' => (string) ($message['created_at'] ?? ''),
                 ];
             }
+            foreach ($storage->listPinStatusEvents($pinId, $projectKey) as $eventIndex => $event) {
+                if (!hash_equals((string) ($event['author_id'] ?? ''), $senderAuthorId)) continue;
+                $events[] = [
+                    'id' => (string) ($event['id'] ?? 'status-' . $eventIndex),
+                    'type' => (string) ($event['status'] ?? '') === 'resolved' ? 'solved' : 'reopened',
+                    'created_at' => (string) ($event['created_at'] ?? ''),
+                ];
+            }
+            usort($events, static fn (array $a, array $b): int =>
+                [$a['created_at'], $a['id']] <=> [$b['created_at'], $b['id']]
+            );
+            if (!$pinCreatedBySender && $events === []) continue;
+            $items[] = ['pin_number' => $pinNumber, 'events' => $events];
         }
         return $items;
     }

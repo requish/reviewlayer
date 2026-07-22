@@ -88,7 +88,10 @@ try {
         'updated_at' => gmdate('c'),
         'deleted_at' => null,
     ]);
-    $storage->updatePinStatus($pinId, 'json-smoke', 'resolved', gmdate('c'));
+    $storage->updatePinStatus($pinId, 'json-smoke', 'resolved', $authorId, gmdate('c'));
+    if (count($storage->listPinStatusEvents($pinId, 'json-smoke')) !== 1) {
+        throw new RuntimeException('JSON status event assertion failed.');
+    }
 
     $limits = new UsageLimits($storage, [
         'MAX_PINS_PER_AUTHOR' => 2,
@@ -134,7 +137,7 @@ try {
     $backup = json_decode((string) file_get_contents($backupPath), true, 64, JSON_THROW_ON_ERROR);
     $storage->restoreAll($backup);
     $restored = $storage->getPin($pinId, 'json-smoke');
-    if ($restored === null || $restored['status'] !== 'resolved' || count($restored['messages']) !== 2 || count($storage->listProjectPins('json-smoke')) !== 2) {
+    if ($restored === null || $restored['status'] !== 'resolved' || count($restored['messages']) !== 2 || count($storage->listProjectPins('json-smoke')) !== 2 || count($storage->listPinStatusEvents($pinId, 'json-smoke')) !== 1) {
         throw new RuntimeException('JSON restore assertion failed.');
     }
 

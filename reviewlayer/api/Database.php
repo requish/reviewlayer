@@ -139,6 +139,16 @@ final class Database implements StorageInterface
                  AND pin_id IN (SELECT id FROM pins WHERE project_key = :project_key)'
             );
             $messages->execute($parameters);
+            $statusEvents = $this->pdo->prepare(
+                'UPDATE pin_status_events SET author_id = :canonical_author_id
+                 WHERE author_id = :source_author_id
+                 AND pin_id IN (SELECT id FROM pins WHERE project_key = :project_key)'
+            );
+            $statusEvents->execute([
+                'project_key' => $projectKey,
+                'canonical_author_id' => $canonicalAuthorId,
+                'source_author_id' => $sourceAuthorId,
+            ]);
             $pins = $this->pdo->prepare(
                 'UPDATE pins SET author_id = :canonical_author_id, author_name = :author_name
                  WHERE project_key = :project_key AND author_id = :source_author_id'
@@ -276,11 +286,57 @@ final class Database implements StorageInterface
         }
     }
 
-    public function updatePinStatus(string $id, string $projectKey, string $status, string $updatedAt): bool
+    public function listPinStatusEvents(string $id, string $projectKey): array
     {
-        $statement = $this->pdo->prepare('UPDATE pins SET status = :status, updated_at = :updated_at WHERE id = :id AND project_key = :project_key AND deleted_at IS NULL');
-        $statement->execute(['status' => $status, 'updated_at' => $updatedAt, 'id' => $id, 'project_key' => $projectKey]);
-        return $statement->rowCount() > 0;
+        $statement = $this->pdo->prepare(
+            'SELECT e.id, e.pin_id, e.author_id, e.status, e.created_at
+             FROM pin_status_events e
+             INNER JOIN pins p ON p.id = e.pin_id
+             WHERE e.pin_id = :pin_id AND p.project_key = :project_key AND p.deleted_at IS NULL
+             ORDER BY e.created_at ASC, e.id ASC'
+        );
+        $statement->execute(['pin_id' => $id, 'project_key' => $projectKey]);
+        return $statement->fetchAll();
+    }
+
+    public function updatePinStatus(string $id, string $projectKey, string $status, string $authorId, string $updatedAt): bool
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $select = $this->pdo->prepare(
+                'SELECT status FROM pins WHERE id = :id AND project_key = :project_key AND deleted_at IS NULL LIMIT 1'
+            );
+            $select->execute(['id' => $id, 'project_key' => $projectKey]);
+            $currentStatus = $select->fetchColumn();
+            if (!is_string($currentStatus)) {
+                $this->pdo->rollBack();
+                return false;
+            }
+            if (hash_equals($currentStatus, $status)) {
+                $this->pdo->commit();
+                return true;
+            }
+            $update = $this->pdo->prepare(
+                'UPDATE pins SET status = :status, updated_at = :updated_at WHERE id = :id AND project_key = :project_key AND deleted_at IS NULL'
+            );
+            $update->execute(['status' => $status, 'updated_at' => $updatedAt, 'id' => $id, 'project_key' => $projectKey]);
+            $event = $this->pdo->prepare(
+                'INSERT INTO pin_status_events (id, pin_id, author_id, status, created_at)
+                 VALUES (:id, :pin_id, :author_id, :status, :created_at)'
+            );
+            $event->execute([
+                'id' => uuidV4(),
+                'pin_id' => $id,
+                'author_id' => $authorId,
+                'status' => $status,
+                'created_at' => $updatedAt,
+            ]);
+            $this->pdo->commit();
+            return true;
+        } catch (Throwable $error) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            throw $error;
+        }
     }
 
     public function softDeletePin(string $id, string $projectKey, string $deletedAt): bool
@@ -319,12 +375,13 @@ final class Database implements StorageInterface
     public function exportAll(): array
     {
         return [
-            'format_version' => 2,
+            'format_version' => 3,
             'exported_at' => gmdate('c'),
             'projects' => $this->pdo->query('SELECT project_key, next_number FROM project_counters ORDER BY project_key')->fetchAll(),
             'users' => $this->pdo->query('SELECT project_key, author_id, author_name, color_index, sequence_number, created_at, updated_at FROM project_users ORDER BY project_key, sequence_number')->fetchAll(),
             'pins' => array_map(fn (array $row): array => $this->hydratePin($row), $this->pdo->query('SELECT * FROM pins ORDER BY project_key, pin_number')->fetchAll()),
             'messages' => $this->pdo->query('SELECT * FROM messages ORDER BY created_at, id')->fetchAll(),
+            'status_events' => $this->pdo->query('SELECT id, pin_id, author_id, status, created_at FROM pin_status_events ORDER BY created_at, id')->fetchAll(),
         ];
     }
 
@@ -335,7 +392,7 @@ final class Database implements StorageInterface
         }
         $this->pdo->beginTransaction();
         try {
-            $this->pdo->exec('DELETE FROM messages; DELETE FROM pins; DELETE FROM project_users; DELETE FROM project_counters;');
+            $this->pdo->exec('DELETE FROM pin_status_events; DELETE FROM messages; DELETE FROM pins; DELETE FROM project_users; DELETE FROM project_counters;');
             $insertCounter = $this->pdo->prepare('INSERT INTO project_counters (project_key, next_number) VALUES (:project_key, :next_number)');
             foreach ($backup['projects'] as $project) {
                 if (!is_array($project)) throw new \InvalidArgumentException('Backup project is invalid.');
@@ -391,6 +448,20 @@ final class Database implements StorageInterface
                     'created_at' => (string) ($message['created_at'] ?? ''),
                     'updated_at' => (string) ($message['updated_at'] ?? ''),
                     'deleted_at' => isset($message['deleted_at']) && is_string($message['deleted_at']) ? $message['deleted_at'] : null,
+                ]);
+            }
+            $insertStatusEvent = $this->pdo->prepare(
+                'INSERT INTO pin_status_events (id, pin_id, author_id, status, created_at)
+                 VALUES (:id, :pin_id, :author_id, :status, :created_at)'
+            );
+            foreach (($backup['status_events'] ?? []) as $event) {
+                if (!is_array($event)) throw new \InvalidArgumentException('Backup status event is invalid.');
+                $insertStatusEvent->execute([
+                    'id' => Validation::uuid($event['id'] ?? null),
+                    'pin_id' => Validation::uuid($event['pin_id'] ?? null, 'pin_id'),
+                    'author_id' => Validation::uuid($event['author_id'] ?? null, 'author_id'),
+                    'status' => Validation::status($event['status'] ?? null),
+                    'created_at' => Validation::string($event['created_at'] ?? null, 'created_at', 1, 64),
                 ]);
             }
             $this->backfillProjectUsers();
@@ -503,6 +574,15 @@ final class Database implements StorageInterface
                 FOREIGN KEY (pin_id) REFERENCES pins(id) ON DELETE CASCADE
             );
             CREATE INDEX IF NOT EXISTS messages_pin_idx ON messages (pin_id, deleted_at, created_at);
+            CREATE TABLE IF NOT EXISTS pin_status_events (
+                id TEXT PRIMARY KEY,
+                pin_id TEXT NOT NULL,
+                author_id TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN (\'open\', \'resolved\')),
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (pin_id) REFERENCES pins(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS pin_status_events_pin_idx ON pin_status_events (pin_id, created_at);
             CREATE TABLE IF NOT EXISTS project_counters (
                 project_key TEXT PRIMARY KEY,
                 next_number INTEGER NOT NULL

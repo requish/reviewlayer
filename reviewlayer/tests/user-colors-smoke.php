@@ -98,9 +98,24 @@ function verifyUserColors(StorageInterface $storage, string $projectKey): void
         throw new RuntimeException($storage->mode() . ': non-default ports were incorrectly merged.');
     }
 
+    $storage->updatePinStatus($pinId, $projectKey, 'resolved', $firstAuthorId, '2026-01-01T00:00:12Z');
+    $storage->updatePinStatus($pinId, $projectKey, 'open', '10000000-0000-4000-8000-000000000002', '2026-01-01T00:00:13Z');
+    $statusEvents = $storage->listPinStatusEvents($pinId, $projectKey);
+    if (array_column($statusEvents, 'status') !== ['resolved', 'open']) {
+        throw new RuntimeException($storage->mode() . ': status event history is invalid.');
+    }
+
     $backup = $storage->exportAll();
-    if (($backup['format_version'] ?? null) !== 2 || count($backup['users'] ?? []) !== 11) {
+    if (($backup['format_version'] ?? null) !== 3 || count($backup['users'] ?? []) !== 11 || count($backup['status_events'] ?? []) !== 2) {
         throw new RuntimeException($storage->mode() . ': backup does not preserve project users.');
+    }
+
+    $legacyBackup = $backup;
+    $legacyBackup['format_version'] = 2;
+    unset($legacyBackup['status_events']);
+    $storage->restoreAll($legacyBackup);
+    if ($storage->getPin($pinId, $projectKey) === null || $storage->listPinStatusEvents($pinId, $projectKey) !== []) {
+        throw new RuntimeException($storage->mode() . ': a version 2 backup was not restored compatibly.');
     }
 
     $cleared = $storage->clear('current_page', 'soft', $projectKey, 'http://www.example.com/', '2026-01-02T00:00:00Z');

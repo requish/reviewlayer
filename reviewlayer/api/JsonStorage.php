@@ -155,6 +155,11 @@ final class JsonStorage implements StorageInterface
                 $message['author_name'] = (string) $canonical['author_name'];
             }
             unset($message);
+            foreach ($data['status_events'] as &$event) {
+                if (!isset($projectPins[(string) $event['pin_id']]) || $event['author_id'] !== $sourceAuthorId) continue;
+                $event['author_id'] = $canonicalAuthorId;
+            }
+            unset($event);
             $data['users'] = array_values(array_filter(
                 $data['users'],
                 static fn (array $user): bool => !(
@@ -257,13 +262,41 @@ final class JsonStorage implements StorageInterface
         });
     }
 
-    public function updatePinStatus(string $id, string $projectKey, string $status, string $updatedAt): bool
+    public function listPinStatusEvents(string $id, string $projectKey): array
     {
-        return $this->mutate(function (array &$data) use ($id, $projectKey, $status, $updatedAt): bool {
+        return $this->read(function (array $data) use ($id, $projectKey): array {
+            $pinExists = false;
+            foreach ($data['pins'] as $pin) {
+                if ($pin['id'] === $id && $pin['project_key'] === $projectKey && $pin['deleted_at'] === null) {
+                    $pinExists = true;
+                    break;
+                }
+            }
+            if (!$pinExists) return [];
+            $events = array_values(array_filter(
+                $data['status_events'],
+                static fn (array $event): bool => $event['pin_id'] === $id
+            ));
+            usort($events, static fn (array $a, array $b): int => [$a['created_at'], $a['id']] <=> [$b['created_at'], $b['id']]);
+            return $events;
+        });
+    }
+
+    public function updatePinStatus(string $id, string $projectKey, string $status, string $authorId, string $updatedAt): bool
+    {
+        return $this->mutate(function (array &$data) use ($id, $projectKey, $status, $authorId, $updatedAt): bool {
             foreach ($data['pins'] as &$pin) {
                 if ($pin['id'] === $id && $pin['project_key'] === $projectKey && $pin['deleted_at'] === null) {
+                    if ($pin['status'] === $status) return true;
                     $pin['status'] = $status;
                     $pin['updated_at'] = $updatedAt;
+                    $data['status_events'][] = [
+                        'id' => uuidV4(),
+                        'pin_id' => $id,
+                        'author_id' => $authorId,
+                        'status' => $status,
+                        'created_at' => $updatedAt,
+                    ];
                     return true;
                 }
             }
@@ -326,12 +359,13 @@ final class JsonStorage implements StorageInterface
                 $projects[] = ['project_key' => $projectKey, 'next_number' => $nextNumber];
             }
             return [
-                'format_version' => 2,
+                'format_version' => 3,
                 'exported_at' => gmdate('c'),
                 'projects' => $projects,
                 'users' => $data['users'],
                 'pins' => $data['pins'],
                 'messages' => $data['messages'],
+                'status_events' => $data['status_events'],
             ];
         });
     }
@@ -358,6 +392,17 @@ final class JsonStorage implements StorageInterface
                 Validation::uuid($message['id'] ?? null);
                 Validation::uuid($message['pin_id'] ?? null, 'pin_id');
             }
+            $statusEvents = [];
+            foreach (($backup['status_events'] ?? []) as $event) {
+                if (!is_array($event)) throw new \InvalidArgumentException('Backup status event is invalid.');
+                $statusEvents[] = [
+                    'id' => Validation::uuid($event['id'] ?? null),
+                    'pin_id' => Validation::uuid($event['pin_id'] ?? null, 'pin_id'),
+                    'author_id' => Validation::uuid($event['author_id'] ?? null, 'author_id'),
+                    'status' => Validation::status($event['status'] ?? null),
+                    'created_at' => Validation::string($event['created_at'] ?? null, 'created_at', 1, 64),
+                ];
+            }
             $users = [];
             foreach (($backup['users'] ?? []) as $user) {
                 if (!is_array($user)) throw new \InvalidArgumentException('Backup user is invalid.');
@@ -379,11 +424,12 @@ final class JsonStorage implements StorageInterface
                 ];
             }
             $data = [
-                'format_version' => 2,
+                'format_version' => 3,
                 'counters' => $counters,
                 'users' => $users,
                 'pins' => array_values($backup['pins']),
                 'messages' => array_values($backup['messages']),
+                'status_events' => $statusEvents,
             ];
             $this->backfillProjectUsers($data);
         });
@@ -430,6 +476,7 @@ final class JsonStorage implements StorageInterface
                 }
                 unset($message);
             } else {
+                $data['status_events'] = array_values(array_filter($data['status_events'], static fn (array $event): bool => !isset($matchingIds[$event['pin_id']])));
                 $data['messages'] = array_values(array_filter($data['messages'], static fn (array $message): bool => !isset($matchingIds[$message['pin_id']])));
                 $data['pins'] = array_values(array_filter($data['pins'], static fn (array $pin): bool => !isset($matchingIds[$pin['id']])));
                 if ($scope === 'all_projects') {
@@ -506,7 +553,7 @@ final class JsonStorage implements StorageInterface
     private function readData(): array
     {
         if (!is_file($this->path)) {
-            return ['format_version' => 2, 'counters' => [], 'users' => [], 'pins' => [], 'messages' => []];
+            return ['format_version' => 3, 'counters' => [], 'users' => [], 'pins' => [], 'messages' => [], 'status_events' => []];
         }
         $raw = file_get_contents($this->path);
         if ($raw === false) {
@@ -520,8 +567,9 @@ final class JsonStorage implements StorageInterface
         if (!is_array($data) || !isset($data['counters'], $data['pins'], $data['messages']) || !is_array($data['counters']) || !is_array($data['pins']) || !is_array($data['messages'])) {
             throw new RuntimeException('JSON storage has an invalid structure.');
         }
-        $data['format_version'] = 2;
+        $data['format_version'] = 3;
         $data['users'] = isset($data['users']) && is_array($data['users']) ? array_values($data['users']) : [];
+        $data['status_events'] = isset($data['status_events']) && is_array($data['status_events']) ? array_values($data['status_events']) : [];
         if ($data['users'] === []) {
             $this->backfillProjectUsers($data);
         }

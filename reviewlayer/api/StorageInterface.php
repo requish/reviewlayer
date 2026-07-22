@@ -34,7 +34,10 @@ interface StorageInterface
     /** @param array<string, mixed> $message @return array<string, mixed> */
     public function addMessage(array $message): array;
 
-    public function updatePinStatus(string $id, string $projectKey, string $status, string $updatedAt): bool;
+    /** @return array<int, array<string, mixed>> */
+    public function listPinStatusEvents(string $id, string $projectKey): array;
+
+    public function updatePinStatus(string $id, string $projectKey, string $status, string $authorId, string $updatedAt): bool;
 
     public function softDeletePin(string $id, string $projectKey, string $deletedAt): bool;
 

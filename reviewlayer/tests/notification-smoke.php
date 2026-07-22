@@ -58,8 +58,8 @@ $storage = new class($authorId, $secondAuthorId) implements StorageInterface {
     {
         return [
             ['id' => '55555555-5555-4555-8555-555555555555', 'pin_number' => 1],
-            ['id' => '33333333-3333-4333-8333-333333333333', 'pin_number' => 2],
-            ['id' => '44444444-4444-4444-8444-444444444444', 'pin_number' => 3],
+            ['id' => '33333333-3333-4333-8333-333333333333', 'pin_number' => 3],
+            ['id' => '44444444-4444-4444-8444-444444444444', 'pin_number' => 4],
         ];
     }
     public function listProjectPins(string $projectKey): array { return []; }
@@ -90,10 +90,13 @@ $storage = new class($authorId, $secondAuthorId) implements StorageInterface {
         }
         if ($id === '44444444-4444-4444-8444-444444444444') {
             return [
-                'author_id' => $this->authorId,
+                'author_id' => $this->secondAuthorId,
                 'created_at' => '2026-01-05T00:00:00Z',
                 'messages' => [
-                    ['author_id' => $this->authorId, 'created_at' => '2026-01-05T00:00:00Z'],
+                    ['author_id' => $this->secondAuthorId, 'created_at' => '2026-01-05T00:00:00Z'],
+                    ['author_id' => $this->authorId, 'created_at' => '2026-01-05T00:01:00Z'],
+                    ['author_id' => $this->authorId, 'created_at' => '2026-01-05T00:02:00Z'],
+                    ['author_id' => $this->authorId, 'created_at' => '2026-01-05T00:03:00Z'],
                 ],
             ];
         }
@@ -111,7 +114,15 @@ $storage = new class($authorId, $secondAuthorId) implements StorageInterface {
     public function getMessage(string $id, string $projectKey): ?array { return null; }
     public function createPin(array $pin, array $message): array { return $pin; }
     public function addMessage(array $message): array { return $message; }
-    public function updatePinStatus(string $id, string $projectKey, string $status, string $updatedAt): bool { return false; }
+    public function listPinStatusEvents(string $id, string $projectKey): array
+    {
+        if ($id !== '33333333-3333-4333-8333-333333333333') return [];
+        return [
+            ['id' => '66666666-6666-4666-8666-666666666666', 'pin_id' => $id, 'author_id' => $this->authorId, 'status' => 'resolved', 'created_at' => '2026-01-04T00:02:00Z'],
+            ['id' => '77777777-7777-4777-8777-777777777777', 'pin_id' => $id, 'author_id' => $this->authorId, 'status' => 'open', 'created_at' => '2026-01-04T00:03:00Z'],
+        ];
+    }
+    public function updatePinStatus(string $id, string $projectKey, string $status, string $authorId, string $updatedAt): bool { return false; }
     public function softDeletePin(string $id, string $projectKey, string $deletedAt): bool { return false; }
     public function softDeleteMessage(string $id, string $projectKey, string $deletedAt): bool { return false; }
     public function exportAll(): array { return []; }
@@ -135,18 +146,26 @@ try {
     $notificationItems = new ReflectionMethod($service, 'notificationItems');
     $items = $notificationItems->invoke($service, $storage, 'default', 'https://reviewlayer.example.com/', $authorId);
     notificationAssert($items === [
-        ['pin_number' => 3, 'type' => 'pin'],
-        ['pin_number' => 2, 'type' => 'comment', 'comment_count' => 1],
-    ], 'Notification items must contain only pins and comments authored by the sender.');
+        ['pin_number' => 4, 'events' => [
+            ['id' => 'message-1', 'type' => 'comment', 'created_at' => '2026-01-05T00:01:00Z'],
+            ['id' => 'message-2', 'type' => 'comment', 'created_at' => '2026-01-05T00:02:00Z'],
+            ['id' => 'message-3', 'type' => 'comment', 'created_at' => '2026-01-05T00:03:00Z'],
+        ]],
+        ['pin_number' => 3, 'events' => [
+            ['id' => 'message-1', 'type' => 'comment', 'created_at' => '2026-01-04T00:01:00Z'],
+            ['id' => '66666666-6666-4666-8666-666666666666', 'type' => 'solved', 'created_at' => '2026-01-04T00:02:00Z'],
+            ['id' => '77777777-7777-4777-8777-777777777777', 'type' => 'reopened', 'created_at' => '2026-01-04T00:03:00Z'],
+        ]],
+    ], 'Notification items must contain the sender event timeline and exclude unrelated pins.');
     $mailer = new ReviewLayer\NativeMailService($config);
     $notificationDigest = new ReflectionMethod($mailer, 'notificationDigest');
     notificationAssert(
-        $notificationDigest->invoke($mailer, $items, false) === "Pin #3\nPin #2 — comment",
-        'The English notification digest must contain pin metadata only.'
+        $notificationDigest->invoke($mailer, $items, false) === "Pin #4 — comment ×3\nPin #3 — comment — solved — reopened",
+        'The English notification digest must group consecutive comments and preserve status order.'
     );
     notificationAssert(
-        $notificationDigest->invoke($mailer, $items, true) === "Pinezka #3\nPinezka #2 — komentarz",
-        'The Polish notification digest must contain pin metadata only.'
+        $notificationDigest->invoke($mailer, $items, true) === "Pinezka #4 — komentarz ×3\nPinezka #3 — komentarz — rozwiązana — otwarta ponownie",
+        'The Polish notification digest must group consecutive comments and preserve status order.'
     );
     $firstSecret = str_repeat('a', 64);
     $secondSecret = str_repeat('b', 64);

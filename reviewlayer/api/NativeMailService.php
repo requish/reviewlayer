@@ -75,7 +75,7 @@ final class NativeMailService
         return $this->send($recipient, $subject, $body);
     }
 
-    /** @param list<array{pin_number:int,type:string,comment_count?:int}> $items */
+    /** @param list<array{pin_number:int,events:list<array{id:string,type:string,created_at:string}>}> $items */
     private function notificationDigest(array $items, bool $polish): string
     {
         $lines = [];
@@ -83,17 +83,40 @@ final class NativeMailService
             $pinNumber = (int) ($item['pin_number'] ?? 0);
             if ($pinNumber < 1) continue;
             $label = ($polish ? 'Pinezka #' : 'Pin #') . $pinNumber;
-            if (($item['type'] ?? '') === 'comment') {
-                $commentCount = max(1, (int) ($item['comment_count'] ?? 1));
-                if ($commentCount === 1) {
-                    $label .= $polish ? ' — komentarz' : ' — comment';
-                } else {
-                    $label .= $polish ? " — komentarze ({$commentCount})" : " — comments ({$commentCount})";
-                }
-            }
+            $tokens = $this->groupNotificationEvents(
+                isset($item['events']) && is_array($item['events']) ? $item['events'] : [],
+                $polish
+            );
+            if ($tokens !== []) $label .= ' — ' . implode(' — ', $tokens);
             $lines[] = $label;
         }
         return implode("\n", $lines);
+    }
+
+    /** @param list<array{id:string,type:string,created_at:string}> $events @return list<string> */
+    private function groupNotificationEvents(array $events, bool $polish): array
+    {
+        $groups = [];
+        foreach ($events as $event) {
+            $type = (string) ($event['type'] ?? '');
+            $label = match ($type) {
+                'comment' => $polish ? 'komentarz' : 'comment',
+                'solved' => $polish ? 'rozwiązana' : 'solved',
+                'reopened' => $polish ? 'otwarta ponownie' : 'reopened',
+                default => '',
+            };
+            if ($label === '') continue;
+            $lastIndex = array_key_last($groups);
+            if ($lastIndex !== null && $groups[$lastIndex]['type'] === $type) {
+                $groups[$lastIndex]['count']++;
+            } else {
+                $groups[] = ['type' => $type, 'label' => $label, 'count' => 1];
+            }
+        }
+        return array_map(
+            static fn (array $group): string => $group['label'] . ($group['count'] > 1 ? ' ×' . $group['count'] : ''),
+            $groups
+        );
     }
 
     private function send(string $recipient, string $subject, string $body): bool
