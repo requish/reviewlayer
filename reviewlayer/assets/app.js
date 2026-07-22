@@ -11,7 +11,7 @@ import {
   removeReviewLayerParameters
 } from './page-key.js';
 
-const VERSION = '1.2.5';
+const VERSION = '1.2.8';
 const MATERIAL_ICON_FONT_FAMILY = 'ReviewLayer Material Symbols';
 const FILTERS = ['all', 'mobile', 'tablet', 'desktop'];
 const DEVICE_ICONS = Object.freeze({
@@ -255,6 +255,9 @@ class ReviewLayerApp {
     this.pinsVisible = safeGet(localStorage, this.visibilityKey, 'true') !== 'false';
     this.toolbarPositionKey = `reviewlayer:${this.projectKey}:toolbar-position`;
     this.toolbarPosition = safeGet(localStorage, this.toolbarPositionKey, 'bottom') === 'top' ? 'top' : 'bottom';
+    this.projectReadStateKey = `reviewlayer:${this.projectKey}:read-state`;
+    this.projectReadState = this.loadProjectReadState();
+    this.conversationOpenedFromProjectList = false;
     this.filter = 'all';
     this.pins = [];
     this.projectPins = [];
@@ -286,6 +289,80 @@ class ReviewLayerApp {
       text = text.replaceAll(`{${name}}`, String(value));
     }
     return text;
+  }
+
+  loadProjectReadState() {
+    const fallback = { version: 1, initialized: false, pins: {} };
+    const raw = safeGet(localStorage, this.projectReadStateKey);
+    if (!raw) return fallback;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || parsed.version !== 1 || typeof parsed.pins !== 'object' || parsed.pins === null) return fallback;
+      const pins = {};
+      for (const [id, value] of Object.entries(parsed.pins)) {
+        if (!value || typeof value !== 'object') continue;
+        pins[id] = {
+          messageCount: Math.max(0, Math.trunc(Number(value.messageCount) || 0)),
+          lastMessageAt: typeof value.lastMessageAt === 'string' ? value.lastMessageAt : ''
+        };
+      }
+      return { version: 1, initialized: parsed.initialized === true, pins };
+    } catch {
+      return fallback;
+    }
+  }
+
+  saveProjectReadState() {
+    safeSet(localStorage, this.projectReadStateKey, JSON.stringify(this.projectReadState));
+  }
+
+  projectPinSnapshot(pin) {
+    const messages = Array.isArray(pin?.messages) ? pin.messages : null;
+    const lastMessage = messages?.length ? messages[messages.length - 1] : null;
+    return {
+      messageCount: Math.max(0, Math.trunc(Number(pin?.message_count) || messages?.length || (pin?.first_message ? 1 : 0))),
+      lastMessageAt: String(pin?.last_message_at || lastMessage?.created_at || pin?.created_at || '')
+    };
+  }
+
+  prepareProjectReadState(pins) {
+    if (!this.projectReadState.initialized) {
+      this.projectReadState.initialized = true;
+      this.projectReadState.pins = Object.fromEntries(
+        pins.map((pin) => [pin.id, this.projectPinSnapshot(pin)])
+      );
+      this.saveProjectReadState();
+      return;
+    }
+
+    const activeIds = new Set(pins.map((pin) => pin.id));
+    for (const id of Object.keys(this.projectReadState.pins)) {
+      if (!activeIds.has(id)) delete this.projectReadState.pins[id];
+    }
+    this.saveProjectReadState();
+  }
+
+  projectPinUnreadType(pin) {
+    if (!this.projectReadState.initialized) return '';
+    const seen = this.projectReadState.pins[pin.id];
+    if (!seen) return 'new-pin';
+    const current = this.projectPinSnapshot(pin);
+    if (current.messageCount > seen.messageCount || current.lastMessageAt > seen.lastMessageAt) return 'new-replies';
+    return '';
+  }
+
+  markProjectPinRead(pinOrId, announce = false) {
+    if (!this.projectReadState.initialized) return;
+    const pin = typeof pinOrId === 'string'
+      ? this.projectPins.find((candidate) => candidate.id === pinOrId)
+        || this.pins.find((candidate) => candidate.id === pinOrId)
+        || (this.currentPin?.id === pinOrId ? this.currentPin : null)
+      : pinOrId;
+    if (!pin?.id) return;
+    this.projectReadState.pins[pin.id] = this.projectPinSnapshot(pin);
+    this.saveProjectReadState();
+    if (this.panelType === 'project-pins') this.renderProjectPins();
+    if (announce) this.showToast(this.t('markedAsRead'));
   }
 
   deviceBadge(deviceType, variant) {
@@ -441,9 +518,9 @@ class ReviewLayerApp {
     if (!requestedPinId) return false;
     removeReviewLayerParameters();
     if (this.pins.some((pin) => pin.id === requestedPinId)) {
-      await this.openConversation(requestedPinId);
+      await this.openConversation(requestedPinId, false, true);
     } else {
-      await this.openConversation(requestedPinId);
+      await this.openConversation(requestedPinId, false, true);
     }
     return true;
   }
@@ -587,6 +664,8 @@ class ReviewLayerApp {
       else if (action === 'toggle-toolbar-position') this.toggleToolbarPosition();
       else if (action === 'project-pins') this.openProjectPins();
       else if (action === 'open-project-pin') this.navigateToProjectPin(actionElement.dataset.pinId);
+      else if (action === 'mark-project-pin-read') this.markProjectPinRead(actionElement.dataset.pinId, true);
+      else if (action === 'back-project-pins') this.openProjectPins();
       else if (action === 'settings') this.openSettings();
       else if (action === 'close-panel') this.closePanel();
       else if (action === 'locate-pin') this.locateCurrentPin();
@@ -808,7 +887,10 @@ class ReviewLayerApp {
       }
       this.authorName = authorName;
       safeSet(localStorage, 'reviewlayer:author-name', authorName);
+      data.pin.message_count = 1;
+      data.pin.last_message_at = data.pin.created_at || '';
       this.pins.push(data.pin);
+      this.markProjectPinRead(data.pin);
       this.tempAnchor = null;
       this.tempTarget = null;
       this.tempPin.hidden = true;
@@ -839,8 +921,9 @@ class ReviewLayerApp {
     };
   }
 
-  async openConversation(id, preserveFocus = false) {
+  async openConversation(id, preserveFocus = false, fromProjectList = false) {
     if (!id) return;
+    if (!preserveFocus) this.conversationOpenedFromProjectList = fromProjectList;
     if (!preserveFocus) this.returnFocus = this.shadow.activeElement;
     this.currentPin = this.pins.find((pin) => pin.id === id) || { id };
     this.openPanel('conversation', preserveFocus);
@@ -856,6 +939,12 @@ class ReviewLayerApp {
       this.currentPin.anchor_uncertain = resolvedAnchor.uncertain;
       this.currentPin.interaction_state = this.currentPin.anchor?.interaction_state
         || (resolvedAnchor.mention ? 'hover' : '');
+      const conversationMessages = this.currentPin.messages || [];
+      this.currentPin.message_count = conversationMessages.length;
+      this.currentPin.last_message_at = conversationMessages.length
+        ? conversationMessages[conversationMessages.length - 1].created_at
+        : this.currentPin.created_at || '';
+      this.markProjectPinRead(this.currentPin);
       this.syncInteractionPreview();
       this.renderConversation();
       this.renderPins();
@@ -880,6 +969,9 @@ class ReviewLayerApp {
     const interactionState = pin.interaction_state || pin.anchor?.interaction_state || '';
     const title = `${this.t('pinNumber', { number: pin.pin_number })}${interactionState === 'hover' ? ' (:hover)' : ''}`;
     const locateAction = `<button class="rl-locate-pin" type="button" data-action="locate-pin" aria-label="${escapeHtml(this.t('locatePin'))}" title="${escapeHtml(this.t('locatePin'))}">${materialIcon('arrow_downward')}<span>${escapeHtml(this.t('locatePin'))}</span></button>`;
+    const backToProjectPins = this.conversationOpenedFromProjectList
+      ? `<button class="rl-panel-back" type="button" data-action="back-project-pins">${materialIcon('arrow_forward')}<span>${escapeHtml(this.t('backToProjectPins'))}</span></button>`
+      : '';
     const statusAction = pin.status === 'resolved'
       ? `<button class="rl-button rl-status-action is-reopen" type="button" data-action="toggle-status">${materialIcon('reopen_window')}<span>${escapeHtml(this.t('reopen'))}</span></button>`
       : `<button class="rl-button rl-status-action" type="button" data-action="toggle-status">${materialIcon('select_check_box')}<span>${escapeHtml(this.t('resolve'))}</span></button>`;
@@ -904,7 +996,7 @@ class ReviewLayerApp {
           <div><dt>${escapeHtml(this.t('operatingSystem'))}</dt><dd>${escapeHtml(browser.os || this.t('unknown'))}</dd></div>
         </dl>
       </details>
-      <button class="rl-button rl-button-danger" type="button" data-action="delete-pin">${escapeHtml(this.t('deletePin'))}</button>`, '', this.deviceBadge(viewport.device_type, 'title'), locateAction);
+      <button class="rl-button rl-button-danger" type="button" data-action="delete-pin">${escapeHtml(this.t('deletePin'))}</button>`, '', this.deviceBadge(viewport.device_type, 'title'), locateAction, backToProjectPins);
   }
 
   locateCurrentPin() {
@@ -1092,6 +1184,10 @@ class ReviewLayerApp {
 
   async openProjectPins() {
     this.openPanel('project-pins');
+    this.conversationOpenedFromProjectList = false;
+    this.currentPin = null;
+    this.syncInteractionPreview();
+    this.renderPins();
     this.panel.innerHTML = this.panelFrame(this.t('allProjectPins'), `<div class="rl-loading">${escapeHtml(this.t('loading'))}</div>`);
     this.panelController?.abort();
     this.panelController = new AbortController();
@@ -1100,31 +1196,49 @@ class ReviewLayerApp {
     try {
       const data = await this.api.listProjectPins(this.projectKey, this.panelController.signal);
       this.projectPins = data.pins || [];
-      const items = this.projectPins.map((pin) => {
-        const page = this.formatPageLabel(pin.page_url);
-        const statusKey = pin.status === 'resolved' ? 'statusResolved' : 'statusOpen';
-        return `<button class="rl-project-pin" type="button" data-action="open-project-pin" data-pin-id="${escapeHtml(pin.id)}" aria-label="${escapeHtml(this.t('openProjectPin', { number: pin.pin_number, page }))}">
-          <span class="rl-project-pin-head">${this.deviceBadge(pin.viewport?.device_type, 'list')}<strong>#${escapeHtml(pin.pin_number)}</strong><span class="rl-status is-${escapeHtml(pin.status)}">${escapeHtml(this.t(statusKey))}</span>${authorBadge(pin.author_name, pin.author_color_index)}<span class="rl-project-pin-arrow" aria-hidden="true">${materialIcon('arrow_forward')}</span></span>
-          <span class="rl-project-pin-page" title="${escapeHtml(pin.page_url)}">${escapeHtml(page)}</span>
-          <span class="rl-project-pin-message">${escapeHtml(pin.first_message || this.t('noMessages'))}</span>
-        </button>`;
-      }).join('');
-      this.panel.innerHTML = this.panelFrame(this.t('allProjectPins'), `
-        <p class="rl-panel-intro">${escapeHtml(this.t('projectPinsIntro', { project: this.projectKey, count: this.projectPins.length }))}</p>
-        <div class="rl-project-pins">${items || `<p class="rl-empty">${escapeHtml(this.t('noProjectPins'))}</p>`}</div>`);
+      this.prepareProjectReadState(this.projectPins);
+      this.renderProjectPins();
     } catch (error) {
       if (error.name !== 'AbortError') this.handleError(error);
     }
   }
 
+  renderProjectPins() {
+    if (this.panelType !== 'project-pins') return;
+    const items = this.projectPins.map((pin) => {
+      const page = this.formatPageLabel(pin.page_url);
+      const statusKey = pin.status === 'resolved' ? 'statusResolved' : 'statusOpen';
+      const unreadType = this.projectPinUnreadType(pin);
+      const unreadLabel = unreadType === 'new-pin'
+        ? this.t('unreadNewPin', { number: pin.pin_number })
+        : this.t('unreadReplies', { number: pin.pin_number });
+      const unreadSlot = unreadType ? '<span class="rl-unread-slot" aria-hidden="true"></span>' : '';
+      const unreadButton = unreadType
+        ? `<button class="rl-unread-indicator is-${unreadType}" type="button" data-action="mark-project-pin-read" data-pin-id="${escapeHtml(pin.id)}" aria-label="${escapeHtml(unreadLabel)}" title="${escapeHtml(unreadLabel)}"><span aria-hidden="true"></span></button>`
+        : '';
+      return `<article class="rl-project-pin">
+        <button class="rl-project-pin-open" type="button" data-action="open-project-pin" data-pin-id="${escapeHtml(pin.id)}" aria-label="${escapeHtml(this.t('openProjectPin', { number: pin.pin_number, page }))}">
+          <span class="rl-project-pin-head">${unreadSlot}${this.deviceBadge(pin.viewport?.device_type, 'list')}<strong>#${escapeHtml(pin.pin_number)}</strong><span class="rl-status is-${escapeHtml(pin.status)}">${escapeHtml(this.t(statusKey))}</span>${authorBadge(pin.author_name, pin.author_color_index)}<span class="rl-project-pin-arrow" aria-hidden="true">${materialIcon('arrow_forward')}</span></span>
+          <span class="rl-project-pin-page" title="${escapeHtml(pin.page_url)}">${escapeHtml(page)}</span>
+          <span class="rl-project-pin-message">${escapeHtml(pin.first_message || this.t('noMessages'))}</span>
+        </button>
+        ${unreadButton}
+      </article>`;
+    }).join('');
+    this.panel.innerHTML = this.panelFrame(this.t('allProjectPins'), `
+      <p class="rl-panel-intro">${escapeHtml(this.t('projectPinsIntro', { project: this.projectKey, count: this.projectPins.length }))}</p>
+      <div class="rl-project-pins">${items || `<p class="rl-empty">${escapeHtml(this.t('noProjectPins'))}</p>`}</div>`);
+  }
+
   navigateToProjectPin(id) {
     const pin = this.projectPins.find((candidate) => candidate.id === id);
     if (!pin) return this.showToast(this.t('pinNavigationFailed'), true);
+    this.markProjectPinRead(pin);
 
     try {
       const targetUrl = createCompatiblePinUrl(pin.page_url);
       if (createNavigationPageKey(targetUrl) === createNavigationPageKey(window.location)) {
-        this.openConversation(pin.id);
+        this.openConversation(pin.id, false, true);
         return;
       }
       window.location.assign(createPinNavigationUrl(targetUrl.href, pin.id));
@@ -1358,8 +1472,8 @@ class ReviewLayerApp {
     else this.panel.removeAttribute('aria-modal');
   }
 
-  panelFrame(title, content, bodyClass = '', titlePrefix = '', titleAction = '') {
-    return `<header class="rl-panel-header"><div><span class="rl-eyebrow">${escapeHtml(this.t('appName'))}</span><div class="rl-panel-title-row"><h2>${titlePrefix}${escapeHtml(title)}</h2>${titleAction}</div></div><button class="rl-icon-button" type="button" data-action="close-panel" aria-label="${escapeHtml(this.t('close'))}" title="${escapeHtml(this.t('close'))}">${materialIcon('close')}</button></header><div class="rl-panel-body${bodyClass ? ` ${escapeHtml(bodyClass)}` : ''}">${content}</div>`;
+  panelFrame(title, content, bodyClass = '', titlePrefix = '', titleAction = '', topAction = '') {
+    return `<header class="rl-panel-header${topAction ? ' has-top-action' : ''}">${topAction}<div><span class="rl-eyebrow">${escapeHtml(this.t('appName'))}</span><div class="rl-panel-title-row"><h2>${titlePrefix}${escapeHtml(title)}</h2>${titleAction}</div></div><button class="rl-icon-button" type="button" data-action="close-panel" aria-label="${escapeHtml(this.t('close'))}" title="${escapeHtml(this.t('close'))}">${materialIcon('close')}</button></header><div class="rl-panel-body${bodyClass ? ` ${escapeHtml(bodyClass)}` : ''}">${content}</div>`;
   }
 
   closePanel(restoreFocus = true) {

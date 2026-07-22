@@ -36,6 +36,9 @@ final class JsonStorage implements StorageInterface
                 ));
                 usort($first, static fn (array $a, array $b): int => [$a['created_at'], $a['id']] <=> [$b['created_at'], $b['id']]);
                 $pin['first_message'] = $first[0]['message'] ?? '';
+                $pin['message_count'] = count($first);
+                $lastIndex = array_key_last($first);
+                $pin['last_message_at'] = $lastIndex === null ? '' : (string) $first[$lastIndex]['created_at'];
             }
             unset($pin);
             usort($pins, static fn (array $a, array $b): int => $a['pin_number'] <=> $b['pin_number']);
@@ -57,6 +60,9 @@ final class JsonStorage implements StorageInterface
                 ));
                 usort($first, static fn (array $a, array $b): int => [$a['created_at'], $a['id']] <=> [$b['created_at'], $b['id']]);
                 $pin['first_message'] = $first[0]['message'] ?? '';
+                $pin['message_count'] = count($first);
+                $lastIndex = array_key_last($first);
+                $pin['last_message_at'] = $lastIndex === null ? '' : (string) $first[$lastIndex]['created_at'];
             }
             unset($pin);
             $pins = array_map(static fn (array $pin): array => [
@@ -70,6 +76,8 @@ final class JsonStorage implements StorageInterface
                 'created_at' => $pin['created_at'],
                 'updated_at' => $pin['updated_at'],
                 'first_message' => $pin['first_message'],
+                'message_count' => (int) $pin['message_count'],
+                'last_message_at' => $pin['last_message_at'],
                 'viewport' => ['device_type' => (string) ($pin['viewport']['device_type'] ?? '')],
             ], $pins);
             usort($pins, static fn (array $a, array $b): int => $b['pin_number'] <=> $a['pin_number']);

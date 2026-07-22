@@ -1,6 +1,6 @@
 # ReviewLayer
 
-ReviewLayer 1.2.5 is an independent annotation overlay for website prototypes. Clients can attach a note to a page element, discuss it, resolve it, and revisit it on another device. Installation needs no Node.js, build process, MySQL, CDN, or SaaS service.
+ReviewLayer 1.2.8 is an independent annotation overlay for website prototypes. Clients can attach a note to a page element, discuss it, resolve it, and revisit it on another device. Installation needs no Node.js, build process, MySQL, CDN, or SaaS service.
 
 ## Server requirements
 
@@ -111,6 +111,8 @@ The preference uses `reviewlayer:{project}:pins-visible`, shared by project page
 Filters `All | Mobile | Tablet | Desktop` select pins by their creation viewport. Hiding does not reset the active filter.
 
 The hamburger icon directly before settings opens every pin in the current project, including pins from other pages. Each item shows its number, status, address, and a first-message preview. Selecting it navigates to the correct page and opens the conversation automatically; the temporary `reviewlayer_pin` parameter is then removed from the address.
+
+The project list marks a new pin with a blue dot and new replies with an orange dot. Selecting the dot or opening the conversation marks that item as read. A conversation opened from this list includes a “Back to pin list” action, including after navigation to another project page. Read state is project-specific and stored only in the current browser under `reviewlayer:{project}:read-state`; it is not an account-level synchronization mechanism. The first list opening establishes the local baseline and does not mark older entries as new.
 
 ## Deletion and protected clearing
 

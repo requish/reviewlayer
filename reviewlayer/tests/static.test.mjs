@@ -255,8 +255,44 @@ test('project pin overview is available from a hamburger button before settings'
   assert.match(database, /'viewport'\] = \['device_type'/);
   assert.match(jsonStorage, /'viewport' => \['device_type'/);
   assert.match(app, /createNavigationPageKey\(targetUrl\) === createNavigationPageKey\(window\.location\)/);
-  assert.match(app, /await this\.openConversation\(requestedPinId\)/);
+  assert.match(app, /await this\.openConversation\(requestedPinId, false, true\)/);
   assert.match(css, /\.rl-project-pins/);
+});
+
+test('project pin list tracks new pins and replies in browser-local read state', async () => {
+  const [app, database, jsonStorage, css, en, pl] = await Promise.all([
+    read('assets/app.js'),
+    read('api/Database.php'),
+    read('api/JsonStorage.php'),
+    read('assets/reviewlayer.css'),
+    read('assets/i18n/en.json').then(JSON.parse),
+    read('assets/i18n/pl.json').then(JSON.parse)
+  ]);
+  assert.match(database, /AS message_count/);
+  assert.match(database, /AS last_message_at/);
+  assert.match(jsonStorage, /'message_count' => \(int\) \$pin\['message_count'\]/);
+  assert.match(jsonStorage, /'last_message_at' => \$pin\['last_message_at'\]/);
+  assert.match(app, /reviewlayer:\$\{this\.projectKey\}:read-state/);
+  assert.match(app, /projectPinUnreadType\(pin\)/);
+  assert.match(app, /this\.prepareProjectReadState\(this\.projectPins\)/);
+  assert.match(app, /data-action="mark-project-pin-read"/);
+  assert.match(app, /this\.markProjectPinRead\(this\.currentPin\)/);
+  assert.match(app, /data-action="back-project-pins"/);
+  assert.match(app, /this\.openConversation\(requestedPinId, false, true\)/);
+  assert.match(app, /this\.openConversation\(pin\.id, false, true\)/);
+  assert.match(app, /this\.conversationOpenedFromProjectList = false/);
+  assert.match(app, /class="rl-panel-back"[\s\S]*materialIcon\('arrow_forward'\)/);
+  assert.match(app, /rl-panel-header\$\{topAction \? ' has-top-action' : ''\}/);
+  assert.match(css, /\.rl-panel-back\s*\{[\s\S]*position:\s*absolute;[\s\S]*width:\s*100%;[\s\S]*border-bottom:\s*1px solid var\(--rl-border\)/);
+  assert.match(css, /\.rl-panel-back > \.rl-material-icon\s*\{[\s\S]*transform:\s*rotate\(180deg\)/);
+  assert.match(css, /\.rl-unread-indicator > span[\s\S]*background:\s*#2475e8/);
+  assert.match(css, /\.rl-unread-indicator\.is-new-replies > span[\s\S]*background:\s*#ed7b24/);
+  for (const translations of [en, pl]) {
+    assert.ok(translations.unreadNewPin);
+    assert.ok(translations.unreadReplies);
+    assert.ok(translations.markedAsRead);
+    assert.ok(translations.backToProjectPins);
+  }
 });
 
 test('commenters receive persistent cycling colors visible across pins, messages, lists, and settings', async () => {
@@ -316,7 +352,7 @@ test('conversation header locates, reveals, and highlights the current pin witho
   assert.doesNotMatch(locateMethod[1], /closePanel/);
   assert.match(app, /window\.scrollTo\(\{/);
   assert.match(app, /marker\.classList\.add\('is-located'\)/);
-  assert.match(app, /panelFrame\(title, content, bodyClass = '', titlePrefix = '', titleAction = ''\)/);
+  assert.match(app, /panelFrame\(title, content, bodyClass = '', titlePrefix = '', titleAction = '', topAction = ''\)/);
   assert.match(css, /\.rl-locate-pin/);
   assert.match(css, /\.rl-pin\.is-located::before/);
   assert.match(css, /@keyframes rl-pin-located/);

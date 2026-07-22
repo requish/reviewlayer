@@ -1,6 +1,6 @@
 # ReviewLayer
 
-ReviewLayer 1.2.5 to niezależna nakładka do komentowania prototypów stron. Klient może przypiąć uwagę do elementu strony, prowadzić rozmowę, oznaczyć ją jako rozwiązaną i wrócić do niej na innym urządzeniu. Instalacja działa bez Node.js, procesu build, MySQL, CDN i usług SaaS.
+ReviewLayer 1.2.8 to niezależna nakładka do komentowania prototypów stron. Klient może przypiąć uwagę do elementu strony, prowadzić rozmowę, oznaczyć ją jako rozwiązaną i wrócić do niej na innym urządzeniu. Instalacja działa bez Node.js, procesu build, MySQL, CDN i usług SaaS.
 
 ## Wymagania serwera
 
@@ -111,6 +111,8 @@ Preferencja jest zapisywana jako `reviewlayer:{project}:pins-visible`, wspólna 
 Filtry `Wszystkie | Mobile | Tablet | Desktop` wybierają pinezki według viewportu utworzenia. Ukrywanie nie resetuje aktywnego filtra.
 
 Ikona hamburgera bezpośrednio przed ustawieniami otwiera listę wszystkich pinezek bieżącego projektu, również z innych podstron. Każda pozycja pokazuje numer, status, adres i fragment pierwszej wiadomości. Kliknięcie przechodzi na właściwą podstronę i automatycznie otwiera rozmowę; tymczasowy parametr `reviewlayer_pin` jest następnie usuwany z adresu.
+
+Lista projektu oznacza nową pinezkę niebieską kropką, a nowe odpowiedzi — pomarańczową. Kliknięcie kropki lub otwarcie rozmowy oznacza pozycję jako przeczytaną. Rozmowa otwarta z tej listy zawiera akcję „Wróć do listy pinezek”, również po przejściu na inną podstronę projektu. Stan odczytu jest osobny dla projektu i zapisany wyłącznie w bieżącej przeglądarce pod kluczem `reviewlayer:{project}:read-state`; nie jest synchronizowany jak konto użytkownika. Pierwsze otwarcie listy zapisuje lokalny punkt odniesienia i nie oznacza starszych wpisów jako nowych.
 
 ## Usuwanie i bezpieczne czyszczenie
 

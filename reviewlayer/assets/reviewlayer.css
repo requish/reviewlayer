@@ -3,7 +3,7 @@
   font-style: normal;
   font-weight: 400;
   font-display: block;
-  src: url("fonts/material-symbols-outlined.woff2?v=1.2.5") format("woff2");
+  src: url("fonts/material-symbols-outlined.woff2?v=1.2.8") format("woff2");
 }
 
 :host {
@@ -274,7 +274,9 @@ button {
 .rl-filters button:focus-visible,
 .rl-text-button:focus-visible,
 .rl-attribution a:focus-visible,
-.rl-project-pin:focus-visible,
+.rl-project-pin-open:focus-visible,
+.rl-unread-indicator:focus-visible,
+.rl-panel-back:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible,
@@ -613,6 +615,43 @@ summary:focus-visible {
   border-bottom: 1px solid var(--rl-border);
 }
 
+.rl-panel-header.has-top-action {
+  position: relative;
+  padding-top: 59px;
+}
+
+.rl-panel-back {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 20px;
+  color: var(--rl-accent);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  background: #fff;
+  border: 0;
+  border-bottom: 1px solid var(--rl-border);
+  cursor: pointer;
+  transition: color .16s ease, background .16s ease;
+}
+
+.rl-panel-back:hover {
+  color: #4933d1;
+  background: var(--rl-soft);
+}
+
+.rl-panel-back > .rl-material-icon {
+  font-size: 18px;
+  transform: rotate(180deg);
+}
+
 .rl-panel-header > div {
   min-width: 0;
 }
@@ -935,17 +974,25 @@ summary:focus-visible {
 }
 
 .rl-project-pin {
+  position: relative;
+  width: 100%;
+  background: #fff;
+  border: 1px solid var(--rl-border);
+  border-radius: 12px;
+  transition: background .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+
+.rl-project-pin-open {
   width: 100%;
   display: grid;
   gap: 7px;
   padding: 13px 14px;
   color: var(--rl-ink);
   text-align: left;
-  background: #fff;
-  border: 1px solid var(--rl-border);
-  border-radius: 12px;
+  background: transparent;
+  border: 0;
+  border-radius: inherit;
   cursor: pointer;
-  transition: background .16s ease, border-color .16s ease, box-shadow .16s ease;
 }
 
 .rl-project-pin:hover {
@@ -958,6 +1005,47 @@ summary:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.rl-unread-slot {
+  flex: 0 0 10px;
+  width: 10px;
+}
+
+.rl-unread-indicator {
+  position: absolute;
+  top: 10px;
+  left: 7px;
+  z-index: 2;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.rl-unread-indicator > span {
+  width: 10px;
+  height: 10px;
+  background: #2475e8;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(36, 117, 232, .35);
+  transition: transform .16s ease;
+}
+
+.rl-unread-indicator.is-new-replies > span {
+  background: #ed7b24;
+  box-shadow: 0 2px 6px rgba(237, 123, 36, .35);
+}
+
+.rl-unread-indicator:hover > span,
+.rl-unread-indicator:focus-visible > span {
+  transform: scale(1.25);
 }
 
 .rl-device-badge.is-list {

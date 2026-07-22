@@ -82,9 +82,14 @@ function verifyUserColors(StorageInterface $storage, string $projectKey): void
     if (array_column($loaded['messages'], 'author_color_index') !== [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1]) {
         throw new RuntimeException($storage->mode() . ': conversation message colors are invalid.');
     }
+    $projectSummary = $storage->listProjectPins($projectKey)[0] ?? [];
     if (($storage->listPins($projectKey, 'https://example.com/')[0]['author_color_index'] ?? null) !== 1
-        || ($storage->listProjectPins($projectKey)[0]['author_color_index'] ?? null) !== 1) {
+        || ($projectSummary['author_color_index'] ?? null) !== 1) {
         throw new RuntimeException($storage->mode() . ': pin summaries do not contain the author color.');
+    }
+    if (($projectSummary['message_count'] ?? null) !== 11
+        || ($projectSummary['last_message_at'] ?? '') !== '2026-01-01T00:00:11Z') {
+        throw new RuntimeException($storage->mode() . ': project pin summaries do not contain the latest reply state.');
     }
     if (($storage->listPins($projectKey, 'http://www.example.com/')[0]['id'] ?? null) !== $pinId) {
         throw new RuntimeException($storage->mode() . ': HTTP/HTTPS and www page aliases were not matched.');

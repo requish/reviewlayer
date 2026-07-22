@@ -55,7 +55,9 @@ final class Database implements StorageInterface
     {
         $statement = $this->pdo->prepare(
             'SELECT p.id, p.page_key, p.page_url, p.pin_number, p.status, p.author_name, u.color_index AS author_color_index, p.created_at, p.updated_at, p.viewport_json,
-                    (SELECT m.message FROM messages m WHERE m.pin_id = p.id AND m.deleted_at IS NULL ORDER BY m.created_at ASC LIMIT 1) AS first_message
+                    (SELECT m.message FROM messages m WHERE m.pin_id = p.id AND m.deleted_at IS NULL ORDER BY m.created_at ASC LIMIT 1) AS first_message,
+                    (SELECT COUNT(*) FROM messages m WHERE m.pin_id = p.id AND m.deleted_at IS NULL) AS message_count,
+                    (SELECT MAX(m.created_at) FROM messages m WHERE m.pin_id = p.id AND m.deleted_at IS NULL) AS last_message_at
              FROM pins p
              LEFT JOIN project_users u ON u.project_key = p.project_key AND u.author_id = p.author_id
              WHERE p.project_key = :project_key AND p.deleted_at IS NULL
@@ -65,6 +67,8 @@ final class Database implements StorageInterface
         return array_map(static function (array $row): array {
             $row['pin_number'] = (int) $row['pin_number'];
             $row['author_color_index'] = isset($row['author_color_index']) ? (int) $row['author_color_index'] : 1;
+            $row['message_count'] = (int) ($row['message_count'] ?? 0);
+            $row['last_message_at'] = (string) ($row['last_message_at'] ?? '');
             $viewport = json_decode((string) $row['viewport_json'], true, 64, JSON_THROW_ON_ERROR);
             $row['viewport'] = ['device_type' => is_array($viewport) ? (string) ($viewport['device_type'] ?? '') : ''];
             unset($row['viewport_json']);
