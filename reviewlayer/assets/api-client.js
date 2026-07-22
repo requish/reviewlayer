@@ -88,6 +88,26 @@ export class ApiClient {
     return this.request('list-project-users', { params: { project_key: projectKey }, signal });
   }
 
+  notificationSettings(body, signal) {
+    return this.request('notification-settings', { method: 'POST', body, signal });
+  }
+
+  requestEmailVerification(body, signal) {
+    return this.request('request-email-verification', { method: 'POST', body, signal });
+  }
+
+  removeNotificationEmail(body, signal) {
+    return this.request('remove-notification-email', { method: 'DELETE', body, signal });
+  }
+
+  listNotificationRecipients(body, signal) {
+    return this.request('list-notification-recipients', { method: 'POST', body, signal });
+  }
+
+  sendNotification(body, signal) {
+    return this.request('send-notification', { method: 'POST', body, signal });
+  }
+
   getPin(id, projectKey, signal) {
     return this.request('get-pin', { params: { id, project_key: projectKey }, signal });
   }

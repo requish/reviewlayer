@@ -11,7 +11,7 @@ import {
   removeReviewLayerParameters
 } from './page-key.js';
 
-const VERSION = '1.2.9';
+const VERSION = '1.3.3';
 const MATERIAL_ICON_FONT_FAMILY = 'ReviewLayer Material Symbols';
 const FILTERS = ['all', 'mobile', 'tablet', 'desktop'];
 const DEVICE_ICONS = Object.freeze({
@@ -46,7 +46,14 @@ const ERROR_TRANSLATIONS = {
   STORAGE_ERROR: 'storageError',
   NOT_FOUND: 'notFound',
   BACKUP_FAILED: 'backupFailed',
-  CONFIGURATION_ERROR: 'configurationError'
+  CONFIGURATION_ERROR: 'configurationError',
+  NOTIFICATIONS_UNAVAILABLE: 'notificationsUnavailable',
+  NOTIFICATION_IDENTITY_DENIED: 'notificationIdentityDenied',
+  NOTIFICATION_RATE_LIMITED: 'notificationRateLimited',
+  EMAIL_NOT_VERIFIED: 'emailNotVerified',
+  PROFILE_UNAVAILABLE: 'notificationProfileUnavailable',
+  MAIL_FAILED: 'mailFailed',
+  VERIFICATION_EXPIRED: 'verificationExpired'
 };
 
 function safeGet(storage, key, fallback = '') {
@@ -162,6 +169,12 @@ function createUuid() {
   return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10).join('')}`;
 }
 
+function createBrowserSecret() {
+  const bytes = new Uint8Array(32);
+  window.crypto.getRandomValues(bytes);
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 function materialIcon(name) {
   return `<span class="rl-material-icon" aria-hidden="true">${escapeHtml(name)}</span>`;
 }
@@ -248,7 +261,10 @@ class ReviewLayerApp {
     this.language = language;
     this.translations = translations;
     this.api = new ApiClient(this.baseUrl);
-    this.authorId = safeGet(localStorage, 'reviewlayer:author-id') || createUuid();
+    const legacyAuthorId = safeGet(localStorage, 'reviewlayer:author-id');
+    this.authorIdKey = `reviewlayer:${this.projectKey}:author-id`;
+    this.authorId = safeGet(localStorage, this.authorIdKey) || legacyAuthorId || createUuid();
+    this.authorSecret = safeGet(localStorage, 'reviewlayer:author-secret') || createBrowserSecret();
     this.authorName = safeGet(localStorage, 'reviewlayer:author-name');
     this.accessCode = safeGet(sessionStorage, `reviewlayer:${this.projectKey}:access-code`);
     this.visibilityKey = `reviewlayer:${this.projectKey}:pins-visible`;
@@ -262,6 +278,8 @@ class ReviewLayerApp {
     this.pins = [];
     this.projectPins = [];
     this.projectUsers = [];
+    this.notificationRecipients = [];
+    this.notificationSettings = null;
     this.currentPageKey = '';
     this.currentPageUrl = '';
     this.currentPin = null;
@@ -282,7 +300,9 @@ class ReviewLayerApp {
     this.interactionPreviewFrame = 0;
     this.anchorResolver = createAnchorResolver();
     this.api.setAccessCode(this.accessCode);
-    safeSet(localStorage, 'reviewlayer:author-id', this.authorId);
+    safeSet(localStorage, this.authorIdKey, this.authorId);
+    if (!legacyAuthorId) safeSet(localStorage, 'reviewlayer:author-id', this.authorId);
+    safeSet(localStorage, 'reviewlayer:author-secret', this.authorSecret);
   }
 
   t(key, replacements = {}) {
@@ -363,6 +383,41 @@ class ReviewLayerApp {
     button.title = label;
   }
 
+  updateNotificationsButton() {
+    const button = this.root?.querySelector('[data-action="notifications"]');
+    if (!button) return;
+    const available = this.bootstrapData?.notifications_available === true;
+    const label = this.t(available ? 'emailNotifications' : 'notificationsUnavailable');
+    button.disabled = !available;
+    button.setAttribute('aria-label', label);
+    button.title = label;
+  }
+
+  notificationIdentity(language = this.language) {
+    return {
+      project_key: this.projectKey,
+      author_id: this.authorId,
+      author_secret: this.authorSecret,
+      language
+    };
+  }
+
+  syncCanonicalNotificationIdentity(settings) {
+    if (!settings || typeof settings !== 'object') return;
+    const canonicalAuthorId = String(settings.canonical_author_id || '');
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(canonicalAuthorId)) {
+      this.authorId = canonicalAuthorId;
+      safeSet(localStorage, this.authorIdKey, canonicalAuthorId);
+    }
+    const canonicalName = String(settings.author_name || '').trim();
+    if (canonicalName) {
+      this.authorName = canonicalName;
+      safeSet(localStorage, 'reviewlayer:author-name', canonicalName);
+      const nameInput = this.panel?.querySelector('form[data-form="settings"] input[name="author_name"]');
+      if (nameInput) nameInput.value = canonicalName;
+    }
+  }
+
   async refreshProjectPinsIndicator(force = false) {
     const now = Date.now();
     if (!force && (this.projectPinsRefreshController || now - this.projectPinsRefreshedAt < 30000)) return;
@@ -417,6 +472,7 @@ class ReviewLayerApp {
     this.observePage();
     try {
       this.bootstrapData = await this.api.bootstrap();
+      this.updateNotificationsButton();
       await this.navigate(true);
       void this.refreshProjectPinsIndicator(true);
     } catch (error) {
@@ -465,6 +521,7 @@ class ReviewLayerApp {
           <button class="rl-position-switch" type="button" role="switch" aria-checked="${this.toolbarPosition === 'top'}" data-action="toggle-toolbar-position" aria-label="${escapeHtml(this.t(this.toolbarPosition === 'bottom' ? 'moveToolbarTop' : 'moveToolbarBottom'))}" title="${escapeHtml(this.t(this.toolbarPosition === 'bottom' ? 'moveToolbarTop' : 'moveToolbarBottom'))}"><span aria-hidden="true"></span></button>
           <span class="rl-position-icon${this.toolbarPosition === 'top' ? ' is-active' : ''}" data-position="top" aria-hidden="true">${positionIcon('up')}</span>
         </div>
+        <button class="rl-icon-button rl-notifications-trigger" type="button" data-action="notifications" aria-label="${escapeHtml(this.t('emailNotifications'))}" title="${escapeHtml(this.t('emailNotifications'))}"${this.bootstrapData?.notifications_available === true ? '' : ' disabled'}>${materialIcon('outgoing_mail')}</button>
         <button class="rl-icon-button rl-project-pins-trigger" type="button" data-action="project-pins" aria-label="${escapeHtml(this.t('allProjectPins'))}" title="${escapeHtml(this.t('allProjectPins'))}">${menuIcon()}<span class="rl-toolbar-unread" aria-hidden="true"></span></button>
         <button class="rl-icon-button" type="button" data-action="settings" aria-label="${escapeHtml(this.t('settings'))}" title="${escapeHtml(this.t('settings'))}">${settingsIcon()}</button>
       </div>
@@ -478,6 +535,7 @@ class ReviewLayerApp {
     this.panel = this.root.querySelector('[data-role="panel"]');
     this.toast = this.root.querySelector('[data-role="toast"]');
     this.updateProjectPinsIndicator();
+    this.updateNotificationsButton();
     this.renderPins();
     if (this.adding) this.setAddModeUi(true);
   }
@@ -699,6 +757,9 @@ class ReviewLayerApp {
       else if (action === 'toggle-add') this.adding ? this.cancelAdd() : this.startAdd();
       else if (action === 'toggle-toolbar-position') this.toggleToolbarPosition();
       else if (action === 'project-pins') this.openProjectPins();
+      else if (action === 'notifications') this.openNotifications();
+      else if (action === 'notify-user') this.notifyUser(actionElement);
+      else if (action === 'remove-notification-email') this.removeNotificationEmail(actionElement);
       else if (action === 'open-project-pin') this.navigateToProjectPin(actionElement.dataset.pinId);
       else if (action === 'mark-project-pin-read') this.markProjectPinRead(actionElement.dataset.pinId, true);
       else if (action === 'back-project-pins') this.openProjectPins();
@@ -745,6 +806,7 @@ class ReviewLayerApp {
     if (form.dataset.form === 'create-pin') await this.submitPin(form);
     else if (form.dataset.form === 'reply') await this.submitReply(form);
     else if (form.dataset.form === 'settings') await this.saveSettings(form);
+    else if (form.dataset.form === 'notification-email') await this.submitNotificationEmail(form);
     else if (form.dataset.form === 'clear-data') await this.submitClear(form);
   }
 
@@ -1293,6 +1355,157 @@ class ReviewLayerApp {
     }
   }
 
+  async openNotifications() {
+    if (this.bootstrapData?.notifications_available !== true) {
+      this.showToast(this.t('notificationsUnavailable'), true);
+      return;
+    }
+    this.openPanel('notifications');
+    this.panelController?.abort();
+    this.panelController = new AbortController();
+    this.panel.innerHTML = this.panelFrame(
+      this.t('emailNotifications'),
+      `<p class="rl-panel-intro">${escapeHtml(this.t('notificationsIntro'))}</p><div class="rl-loading">${escapeHtml(this.t('loading'))}</div>`
+    );
+    this.focusPanel('[data-action="close-panel"]');
+    try {
+      const data = await this.api.listNotificationRecipients(
+        this.notificationIdentity(),
+        this.panelController.signal
+      );
+      if (this.panelType !== 'notifications') return;
+      this.notificationRecipients = data.recipients || [];
+      this.renderNotificationRecipients();
+    } catch (error) {
+      if (error.name === 'AbortError') return;
+      if (this.panelType === 'notifications') {
+        this.panel.innerHTML = this.panelFrame(
+          this.t('emailNotifications'),
+          `<p class="rl-notification-empty">${escapeHtml(this.t(ERROR_TRANSLATIONS[error?.code] || 'requestFailed'))}</p>`
+        );
+      }
+      this.handleError(error);
+    }
+  }
+
+  renderNotificationRecipients() {
+    if (this.panelType !== 'notifications') return;
+    const recipients = this.notificationRecipients.filter((recipient) => !recipient.is_current);
+    const items = recipients.map((recipient) => {
+      const available = recipient.email_verified && recipient.recipient_id;
+      const label = available
+        ? this.t('notifyUser', { user: recipient.author_name })
+        : this.t('userEmailUnavailable', { user: recipient.author_name });
+      return `<li class="rl-notification-recipient">
+        <span class="rl-notification-recipient-name">${authorBadge(recipient.author_name, recipient.color_index)}<small>${escapeHtml(available ? this.t('verifiedEmail') : this.t('noVerifiedEmail'))}</small></span>
+        <button class="rl-button ${available ? 'rl-button-primary' : 'rl-button-muted'}" type="button" data-action="notify-user" data-recipient-id="${escapeHtml(recipient.recipient_id)}" data-recipient-name="${escapeHtml(recipient.author_name)}"${available ? '' : ' disabled'}>${materialIcon('outgoing_mail')}<span>${escapeHtml(label)}</span></button>
+      </li>`;
+    }).join('');
+    const content = items
+      ? `<p class="rl-panel-intro">${escapeHtml(this.t('notificationsIntro'))}</p><ul class="rl-notification-recipients">${items}</ul><p class="rl-notification-footnote">${escapeHtml(this.t('notificationsManualOnly'))}</p>`
+      : `<p class="rl-notification-empty">${escapeHtml(this.t('noNotificationRecipients'))}</p>`;
+    this.panel.innerHTML = this.panelFrame(this.t('emailNotifications'), content);
+  }
+
+  async notifyUser(button) {
+    const recipientId = button.dataset.recipientId || '';
+    if (!recipientId || button.disabled) return;
+    const original = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = `${materialIcon('progress_activity')}<span>${escapeHtml(this.t('sending'))}</span>`;
+    try {
+      await this.api.sendNotification({
+        ...this.notificationIdentity(),
+        recipient_id: recipientId,
+        page_url: this.currentPageUrl || window.location.href
+      });
+      this.showToast(this.t('notificationSent', { user: button.dataset.recipientName || '' }));
+    } catch (error) {
+      this.handleError(error);
+    } finally {
+      if (button.isConnected) {
+        button.disabled = false;
+        button.innerHTML = original;
+      }
+    }
+  }
+
+  async loadNotificationSettings(signal) {
+    const container = this.panel.querySelector('[data-role="notification-settings"]');
+    if (!container) return;
+    try {
+      const data = await this.api.notificationSettings(this.notificationIdentity(), signal);
+      if (this.panelType !== 'settings' || !container.isConnected) return;
+      this.notificationSettings = data.settings || null;
+      this.syncCanonicalNotificationIdentity(this.notificationSettings);
+      this.renderNotificationSettings(container);
+    } catch (error) {
+      if (error.name === 'AbortError') return;
+      container.innerHTML = `<p class="rl-notification-empty">${escapeHtml(this.t(ERROR_TRANSLATIONS[error?.code] || 'notificationSettingsLoadFailed'))}</p>`;
+      if (error?.code !== 'PROFILE_UNAVAILABLE') this.handleError(error);
+    }
+  }
+
+  renderNotificationSettings(container = this.panel.querySelector('[data-role="notification-settings"]')) {
+    if (!container || !this.notificationSettings) return;
+    const settings = this.notificationSettings;
+    const status = settings.email_verified
+      ? `<p class="rl-email-status is-verified">${materialIcon('verified')}<span>${escapeHtml(this.t('verifiedEmailAddress', { email: settings.email_masked }))}</span></p>`
+      : `<p class="rl-email-status">${materialIcon('mail')}<span>${escapeHtml(this.t('emailNotConfigured'))}</span></p>`;
+    const pending = settings.verification_pending
+      ? `<p class="rl-email-pending">${escapeHtml(this.t('emailVerificationPending', { email: settings.pending_email_masked }))}</p>`
+      : '';
+    const linked = settings.email_verified && Number(settings.linked_devices) > 1
+      ? `<p class="rl-email-linked">${materialIcon('devices')}<span>${escapeHtml(this.t('linkedDevices', { count: settings.linked_devices }))}</span></p>`
+      : '';
+    const remove = settings.email_verified
+      ? `<button class="rl-text-button rl-danger-text" type="button" data-action="remove-notification-email">${escapeHtml(this.t('removeEmailAddress'))}</button>`
+      : '';
+    container.innerHTML = `${status}${pending}${linked}
+      <form data-form="notification-email" class="rl-notification-email-form">
+        <label>${escapeHtml(settings.email_verified ? this.t('changeEmailAddress') : this.t('yourEmailAddress'))}<input name="email" type="email" maxlength="254" autocomplete="email" inputmode="email" required placeholder="name@example.com"></label>
+        <button class="rl-button rl-button-muted" type="submit">${materialIcon('mark_email_unread')}<span>${escapeHtml(this.t('sendVerificationEmail'))}</span></button>
+      </form>
+      ${remove}`;
+  }
+
+  async submitNotificationEmail(form) {
+    const data = new FormData(form);
+    const email = String(data.get('email') || '').trim();
+    if (!email) return;
+    this.setFormBusy(form, true);
+    try {
+      const result = await this.api.requestEmailVerification({
+        ...this.notificationIdentity(),
+        email
+      });
+      this.notificationSettings = result.settings || null;
+      this.syncCanonicalNotificationIdentity(this.notificationSettings);
+      this.renderNotificationSettings();
+      this.showToast(result.settings?.verification_sent === false ? this.t('emailAlreadyVerified') : this.t('verificationEmailSent'));
+    } catch (error) {
+      this.handleError(error);
+    } finally {
+      if (form.isConnected) this.setFormBusy(form, false);
+    }
+  }
+
+  async removeNotificationEmail(button) {
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      const result = await this.api.removeNotificationEmail(this.notificationIdentity());
+      this.notificationSettings = result.settings || null;
+      this.syncCanonicalNotificationIdentity(this.notificationSettings);
+      this.renderNotificationSettings();
+      this.showToast(this.t('emailAddressRemoved'));
+    } catch (error) {
+      this.handleError(error);
+    } finally {
+      if (button.isConnected) button.disabled = false;
+    }
+  }
+
   openSettings() {
     const attribution = readAttributionManifest();
     const backupSection = this.bootstrapData?.admin_actions_enabled === false
@@ -1307,6 +1520,13 @@ class ReviewLayerApp {
       <h3 id="rl-users-title">${escapeHtml(this.t('activeUsers'))}</h3>
       <div class="rl-project-users" data-role="project-users"><span class="rl-loading">${escapeHtml(this.t('loading'))}</span></div>
     </section>`;
+    const notificationSection = this.bootstrapData?.notifications_available === true
+      ? `<section class="rl-settings-section" aria-labelledby="rl-notification-settings-title">
+          <h3 id="rl-notification-settings-title">${escapeHtml(this.t('emailNotifications'))}</h3>
+          <p>${escapeHtml(this.t('emailPrivacyHint'))}</p>
+          <div class="rl-notification-settings" data-role="notification-settings"><span class="rl-loading">${escapeHtml(this.t('loading'))}</span></div>
+        </section>`
+      : '';
     this.openPanel('settings');
     this.panelController?.abort();
     this.panelController = new AbortController();
@@ -1318,11 +1538,13 @@ class ReviewLayerApp {
         <div class="rl-help"><strong>${escapeHtml(this.t('shortcutHelp'))}</strong><span>${escapeHtml(this.t('togglePinsShortcut'))}</span><span>${escapeHtml(this.t('closeWithEscape'))}</span></div>
         <button class="rl-button rl-button-primary" type="submit">${escapeHtml(this.t('save'))}</button>
       </form>
+      ${notificationSection}
       ${backupSection}
       ${usersSection}
       ${this.attributionMarkup(attribution)}`, 'rl-settings-body');
     this.protectSettingsAttribution(attribution);
     this.loadProjectUsers(this.panelController.signal);
+    if (notificationSection) this.loadNotificationSettings(this.panelController.signal);
     this.focusPanel('input');
   }
 
@@ -1432,6 +1654,16 @@ class ReviewLayerApp {
     safeSet(localStorage, 'reviewlayer:language', nextLanguage);
     safeSet(sessionStorage, `reviewlayer:${this.projectKey}:access-code`, this.accessCode);
     this.api.setAccessCode(this.accessCode);
+    if (this.bootstrapData?.notifications_available === true) {
+      try {
+        const result = await this.api.notificationSettings(this.notificationIdentity(nextLanguage));
+        this.syncCanonicalNotificationIdentity(result.settings || null);
+      } catch (error) {
+        if (!['PROFILE_UNAVAILABLE', 'NOTIFICATIONS_UNAVAILABLE'].includes(error?.code)) {
+          console.warn('[ReviewLayer] Unable to update notification language.', error);
+        }
+      }
+    }
     if (nextLanguage !== this.language) {
       try {
         this.translations = await loadTranslations(this.baseUrl, nextLanguage);

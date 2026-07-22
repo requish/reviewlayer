@@ -1,6 +1,6 @@
 # ReviewLayer
 
-ReviewLayer 1.2.9 to niezależna nakładka do komentowania prototypów stron. Klient może przypiąć uwagę do elementu strony, prowadzić rozmowę, oznaczyć ją jako rozwiązaną i wrócić do niej na innym urządzeniu. Instalacja działa bez Node.js, procesu build, MySQL, CDN i usług SaaS.
+ReviewLayer 1.3.3 to niezależna nakładka do komentowania prototypów stron. Klient może przypiąć uwagę do elementu strony, prowadzić rozmowę, oznaczyć ją jako rozwiązaną i wrócić do niej na innym urządzeniu. Instalacja działa bez Node.js, procesu build, MySQL, CDN i usług SaaS.
 
 ## Wymagania serwera
 
@@ -69,6 +69,10 @@ Wspólne pliki `assets/i18n/pl.json` i `assets/i18n/en.json` zawierają teksty n
 - `PERSISTENT_RATE_LIMIT` — trwały limit żądań według skrótu adresu IP, odporny na otwieranie nowych sesji.
 - `MAX_PINS_PER_AUTHOR`, `MAX_MESSAGES_PER_PIN`, `MAX_TOTAL_PINS` i `MAX_TOTAL_MESSAGES` — opcjonalne limity demo; `0` wyłącza dany limit.
 - `MAX_BACKUPS` — maksymalna liczba zachowanych kopii; `0` oznacza brak automatycznego usuwania.
+- `NOTIFICATIONS_ENABLED` — włącza ręczne powiadomienia e-mail. Wiadomości korzystają z natywnego transportu PHP `mail()` serwera; ReviewLayer nie przechowuje danych logowania SMTP.
+- `NOTIFICATION_FROM_EMAIL` — opcjonalny stały nadawca. Gdy jest pusty, ReviewLayer wyprowadza `reviewlayer@bieżący-host`; ustaw istniejący adres w tej samej domenie, jeśli wymaga tego hosting.
+- `NOTIFICATION_PUBLIC_BASE_URL` — opcjonalny pełny URL katalogu ReviewLayer dla linków potwierdzających. Pozostaw pusty dla kopii instalowanych w różnych domenach prototypów.
+- limity czasowe, godzinowe i dzienne powiadomień oraz weryfikacji — trwała ochrona przed nadużyciami, niezależna od sesji przeglądarki.
 - limity tekstu i okno rate limitingu.
 
 Najprostsza konfiguracja dla prototypu wygląda tak:
@@ -86,6 +90,22 @@ Kod znajduje się wyłącznie w wykonywanym po stronie serwera `config.php`. Nie
 Przy pierwszym komentarzu formularz prosi o imię. Imię i losowy UUID autora są zapisywane w `localStorage`; imię można zmienić w ustawieniach.
 
 Każdy nowy komentujący w projekcie otrzymuje kolejny kolor z palety dziesięciu barw; jedenasty użytkownik ponownie dostaje kolor pierwszy. Pinezki i etykiety autora zachowują to przypisanie, rozwiązane pinezki używają mniej nasyconego odpowiednika, a Ustawienia pokazują wszystkich zarejestrowanych komentujących projektu. Zmiana wyświetlanego imienia nie zmienia koloru.
+
+### Ręczne powiadomienia e-mail
+
+Ikona wysyłania otwiera listę komentujących w projekcie. Kliknięcie „Powiadom…” wysyła jedną krótką wiadomość wprost przez natywny transport pocztowy PHP serwera. ReviewLayer nigdy nie wysyła e-maili po dodaniu komentarza, według harmonogramu ani z crona. Każda wiadomość wymaga świadomego kliknięcia. Polski lub angielski szablon jest wybierany na podstawie języka zapisanego przez odbiorcę.
+
+Wiadomość wymienia numery pinezek z bieżącej strony, zaczynając od najnowszej, oraz oznacza wątki zawierające odpowiedź. Treść komentarzy nigdy nie jest umieszczana w e-mailu.
+
+Komentujący może dodać adres w Ustawieniach po utworzeniu pinezki lub komentarza. Zanim będzie można go powiadamiać, musi otworzyć jednorazowy link potwierdzający. Inne przeglądarki otrzymują wyłącznie imię oraz informację gotowy/brak adresu; sam e-mail nigdy nie jest zwracany przez API. Nadawca wybiera nieprzewidywalny identyfikator odbiorcy, a nie dowolny adres e-mail.
+
+Adresy są szyfrowane uwierzytelnionym algorytmem w osobnym, chronionym magazynie `data/notifications.json`. Przeglądarka przechowuje losowy sekret tożsamości, a serwer tylko jego hash. Domyślnie klucz szyfrujący powstaje jako `data/.notification-key`; oba pliki chroni `data/.htaccess`. Pełna kopia hostingu musi zachować razem klucz i zaszyfrowany magazyn. Przenośne kopie pinezek celowo nie zawierają kontaktów.
+
+Gdy ten sam adres e-mail zostanie potwierdzony w innej przeglądarce w tym samym projekcie, ReviewLayer łączy ją z najstarszym już potwierdzonym komentującym. Zachowane zostają dotychczasowe imię, kolor, pinezki, wiadomości, statusy, numeracja i daty. Poprzednie identyfikatory przeglądarek stają się aliasami po stronie serwera, dlatego stare karty nadal działają. Operacja zmienia wyłącznie dane i nie wprowadza migracji schematu SQLite. Stan przeczytane/nieprzeczytane celowo pozostaje lokalny dla każdej przeglądarki. Nie używaj jednego wspólnego adresu dla różnych osób w projekcie, ponieważ jego potwierdzenie połączy ich tożsamości komentujących.
+
+Ręczna wysyłka ma limity dla nadawcy, odbiorcy, projektu i zahashowanego IP. Weryfikacja adresu ma osobny cooldown i limit dzienny. Wymagane są także CSRF, kontrola tego samego originu, zasady dostępu do projektu i sekret przeglądarki. Turnstile ani widoczna CAPTCHA nie są używane, dlatego publiczna instalacja powinna zachować ostrożne limity i najlepiej kod dostępu do projektu.
+
+Funkcja PHP `mail()` musi już działać na hostingu tak jak dla zwykłego formularza kontaktowego. Skonfiguruj politykę domeny nadawcy, w miarę możliwości SPF, DKIM i DMARC. Wynik `true` oznacza przyjęcie wiadomości przez lokalny transport, a nie gwarancję końcowego doręczenia.
 
 1. Kliknij „Dodaj pinezkę”.
 2. Wskaż miejsce na stronie. Podświetlenie jest częścią nakładki i nie modyfikuje elementu prototypu.
@@ -131,13 +151,13 @@ Zakresy:
 - rozwiązane w projekcie — tylko status `resolved`;
 - wszystkie dane — wszystkie projekty, zawsze trwały purge.
 
-Soft delete zachowuje historię. Permanent purge fizycznie usuwa rekordy. Czyszczenie projektu nie resetuje liczników innych projektów. Backend ponownie kanonizuje `page_url`, porównuje klucz, waliduje dane, sprawdza kod administratora, zapisuje log i używa transakcji lub blokady pliku.
+Soft delete zachowuje historię. Permanent purge fizycznie usuwa rekordy. Trwałe czyszczenie projektu lub wszystkich danych usuwa też zaszyfrowane profile powiadomień, które nie należą już do zachowanego komentatora. Czyszczenie projektu nie resetuje liczników innych projektów. Backend ponownie kanonizuje `page_url`, porównuje klucz, waliduje dane, sprawdza kod administratora, zapisuje log i używa transakcji lub blokady pliku.
 
 ## Backup i przywracanie
 
 W panelu „Ustawienia” znajduje się osobna sekcja „Kopia zapasowa”. Przycisk „Utwórz kopię teraz” zapisuje pełny eksport wszystkich projektów w `data/backups/` bez usuwania lub zmieniania danych. Jeśli kod administratora został skonfigurowany, aplikacja poprosi o niego przed wykonaniem kopii.
 
-Przy `CREATE_BACKUP_BEFORE_PURGE = true` trwałe czyszczenie najpierw zapisuje przenośny JSON w `data/backups/`. Zawiera wersję formatu, projekty i liczniki, pinezki, wiadomości, statusy, daty, kotwiczenie, viewport i dane przeglądarki. Jeśli backup zawiedzie, purge jest blokowany, chyba że administrator jawnie zaznaczy kontynuację bez kopii.
+Przy `CREATE_BACKUP_BEFORE_PURGE = true` trwałe czyszczenie najpierw zapisuje przenośny JSON w `data/backups/`. Zawiera wersję formatu, projekty i liczniki, pinezki, wiadomości, statusy, daty, kotwiczenie, viewport i dane przeglądarki. Kontakty powiadomień są wyłączone, ponieważ wymagają klucza szyfrującego konkretnej instalacji. Jeśli backup zawiedzie, purge jest blokowany, chyba że administrator jawnie zaznaczy kontynuację bez kopii.
 
 Przywracanie zastępuje aktualne dane całą zawartością backupu. Najpierw wykonaj dodatkową kopię katalogu `data`, włącz tryb konserwacyjny i z katalogu `reviewlayer` uruchom:
 

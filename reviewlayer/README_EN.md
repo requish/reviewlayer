@@ -1,6 +1,6 @@
 # ReviewLayer
 
-ReviewLayer 1.2.9 is an independent annotation overlay for website prototypes. Clients can attach a note to a page element, discuss it, resolve it, and revisit it on another device. Installation needs no Node.js, build process, MySQL, CDN, or SaaS service.
+ReviewLayer 1.3.3 is an independent annotation overlay for website prototypes. Clients can attach a note to a page element, discuss it, resolve it, and revisit it on another device. Installation needs no Node.js, build process, MySQL, CDN, or SaaS service.
 
 ## Server requirements
 
@@ -69,6 +69,10 @@ Shared files `assets/i18n/pl.json` and `assets/i18n/en.json` supply copy for bot
 - `PERSISTENT_RATE_LIMIT` — persistent request limiting by hashed IP address, resistant to opening new sessions.
 - `MAX_PINS_PER_AUTHOR`, `MAX_MESSAGES_PER_PIN`, `MAX_TOTAL_PINS`, and `MAX_TOTAL_MESSAGES` — optional demo limits; `0` disables a limit.
 - `MAX_BACKUPS` — maximum retained backup count; `0` disables automatic pruning.
+- `NOTIFICATIONS_ENABLED` — enables manual email notifications. Messages use the server's native PHP `mail()` transport; ReviewLayer stores no SMTP credentials.
+- `NOTIFICATION_FROM_EMAIL` — optional fixed sender. When empty, ReviewLayer derives `reviewlayer@current-host`; set an existing same-domain address if required by the hosting mail policy.
+- `NOTIFICATION_PUBLIC_BASE_URL` — optional absolute ReviewLayer directory URL for verification links. Leave empty for same-origin copies installed on different prototype domains.
+- notification and verification cooldown/hourly/daily options — persistent abuse limits independent from browser sessions.
 - text limits and the rate-limit window.
 
 The simplest prototype configuration is:
@@ -86,6 +90,22 @@ The code exists only in server-executed `config.php`. Never place it in `embed.j
 The first comment form asks for a name. The name and a random author UUID are stored in `localStorage`; the name remains editable in settings.
 
 Each new commenter in a project receives the next color from a ten-color palette; the eleventh commenter reuses the first color. Pins and author badges keep that assignment, resolved pins use a less saturated companion color, and Settings lists all registered project commenters. Changing a display name does not change the assigned color.
+
+### Manual email notifications
+
+The outgoing-mail icon opens the project commenter list. Selecting “Notify…” sends one short localized message immediately through the server's native PHP mail transport. ReviewLayer never sends email on a timer, after a new comment, or from cron. Every message requires an explicit click. The recipient's saved ReviewLayer language selects the Polish or English template.
+
+The message lists the pin numbers from the current page, newest first, and marks threads that contain a reply. Comment text is never included in the email.
+
+A commenter can add an address in Settings after creating a pin or comment. A single-use confirmation link must be opened before that person can receive notifications. Other browsers receive only the commenter's display name and a ready/not-ready flag; the address itself is never returned by the API. The sender chooses an opaque recipient ID, not an arbitrary email address.
+
+Email addresses use authenticated encryption in the separate protected `data/notifications.json` store. The browser holds a random identity secret, while the server stores only its hash. By default the encryption key is generated as `data/.notification-key`; `data/.htaccess` protects both files. Keep the key and encrypted store together in a full hosting backup. Portable ReviewLayer pin backups intentionally exclude notification contacts.
+
+When the same email address is confirmed by another browser in the same project, ReviewLayer links that browser to the oldest already verified commenter. The established display name, color, pins, messages, statuses, numbering, and timestamps are retained. Existing browser IDs become server-side aliases, so old tabs continue to work. This operation changes data rows only and introduces no SQLite schema migration. The unread/read indicator remains intentionally local to each browser. Do not share one mailbox between different people in a project, because confirming a shared address links their commenter identities.
+
+Manual sends are limited per sender, recipient, project, and hashed IP address. Verification mail has separate cooldown and daily limits. CSRF, same-origin checks, project access rules, and the browser identity secret are also required. No Turnstile or visible CAPTCHA is included, so public installations should keep conservative limits and preferably use a project access code.
+
+PHP `mail()` must already work for an ordinary contact form on the hosting account. Configure the hosting sender/domain policy, including SPF, DKIM, and DMARC where available. A `true` result means the local mail transport accepted the message, not that final delivery is guaranteed.
 
 1. Select “Add pin”.
 2. Pick a point on the page. Highlighting belongs to the overlay and does not modify the prototype element.
@@ -131,13 +151,13 @@ Scopes:
 - resolved in project — status `resolved` only;
 - all data — every project, always a permanent purge.
 
-Soft delete retains history. Permanent purge physically removes records. Clearing a project does not reset counters for other projects. The backend recanonicalizes `page_url`, compares its key, validates data, verifies the administrator code, logs the event, and uses a transaction or file lock.
+Soft delete retains history. Permanent purge physically removes records. Purging a project or all data also removes encrypted notification profiles that no longer belong to a retained commenter. Clearing a project does not reset counters for other projects. The backend recanonicalizes `page_url`, compares its key, validates data, verifies the administrator code, logs the event, and uses a transaction or file lock.
 
 ## Backup and restore
 
 Settings contains a separate “Backup” section. “Create backup now” writes a complete export of every project into `data/backups/` without deleting or changing data. If an administrator code is configured, the app asks for it before creating the backup.
 
-With `CREATE_BACKUP_BEFORE_PURGE = true`, permanent clearing first writes portable JSON into `data/backups/`. It includes format version, projects and counters, pins, messages, statuses, dates, anchor, viewport, and browser data. A backup failure blocks purge unless the administrator explicitly chooses to continue without it.
+With `CREATE_BACKUP_BEFORE_PURGE = true`, permanent clearing first writes portable JSON into `data/backups/`. It includes format version, projects and counters, pins, messages, statuses, dates, anchor, viewport, and browser data. Notification contacts are excluded because they require the installation-specific encryption key. A backup failure blocks purge unless the administrator explicitly chooses to continue without it.
 
 Restore replaces current data with the complete backup. First make an extra copy of `data`, enable maintenance mode, and run from the `reviewlayer` directory:
 

@@ -47,6 +47,24 @@ final class Validation
         return strtolower($value);
     }
 
+    public static function browserSecret(mixed $value): string
+    {
+        $value = self::string($value, 'author_secret', 64, 64);
+        if (preg_match('/^[0-9a-f]{64}$/D', $value) !== 1) {
+            throw new InvalidArgumentException('author_secret has an invalid format.');
+        }
+        return $value;
+    }
+
+    public static function email(mixed $value): string
+    {
+        $value = strtolower(self::string($value, 'email', 3, 254));
+        if (preg_match('/[\r\n]/', $value) === 1 || filter_var($value, FILTER_VALIDATE_EMAIL) === false) {
+            throw new InvalidArgumentException('email is invalid.');
+        }
+        return $value;
+    }
+
     public static function pageUrl(mixed $value): string
     {
         $url = self::string($value, 'page_url', 8, 4096);

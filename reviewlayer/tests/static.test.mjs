@@ -219,6 +219,67 @@ test('settings expose a separate manual backup action', async () => {
   assert.match(app, /admin_actions_enabled === false/);
 });
 
+test('manual email notifications keep addresses server-side and require browser identity', async () => {
+  const [app, client, api, bootstrap, service, mailer, storage, database, jsonStorage, css, en, pl] = await Promise.all([
+    read('assets/app.js'),
+    read('assets/api-client.js'),
+    read('api/index.php'),
+    read('api/bootstrap.php'),
+    read('api/NotificationService.php'),
+    read('api/NativeMailService.php'),
+    read('api/StorageInterface.php'),
+    read('api/Database.php'),
+    read('api/JsonStorage.php'),
+    read('assets/reviewlayer.css'),
+    read('assets/i18n/en.json').then(JSON.parse),
+    read('assets/i18n/pl.json').then(JSON.parse)
+  ]);
+  assert.match(app, /reviewlayer:author-secret/);
+  assert.match(app, /this\.authorIdKey = `reviewlayer:\$\{this\.projectKey\}:author-id`/);
+  assert.match(app, /syncCanonicalNotificationIdentity/);
+  assert.match(app, /data-action="notifications"/);
+  assert.match(app, /data-action="notify-user"/);
+  assert.match(app, /data-form="notification-email"/);
+  assert.match(app, /this\.api\.sendNotification/);
+  assert.match(client, /requestEmailVerification\(body, signal\)/);
+  assert.match(client, /listNotificationRecipients\(body, signal\)/);
+  assert.match(client, /sendNotification\(body, signal\)/);
+  assert.match(api, /\$action === 'request-email-verification'/);
+  assert.match(api, /\$action === 'send-notification'/);
+  assert.match(api, /Validation::browserSecret/);
+  assert.match(api, /canonicalAuthorIdentity/);
+  assert.match(bootstrap, /NOTIFICATION_COOLDOWN_SECONDS/);
+  assert.match(bootstrap, /EMAIL_VERIFICATION_IP_DAILY_LIMIT/);
+  assert.match(service, /sodium_crypto_secretbox/);
+  assert.match(service, /aes-256-gcm/);
+  assert.match(service, /pending_email_ciphertext/);
+  assert.match(service, /identity_hash/);
+  assert.match(service, /identity_hashes/);
+  assert.match(service, /resolveAuthorId/);
+  assert.match(service, /synchronizeLinkedAuthors/);
+  assert.match(service, /storage_merged_at/);
+  assert.match(service, /NOTIFICATION_RATE_LIMITED/);
+  assert.match(service, /ip_hash/);
+  assert.match(mailer, /function_exists\('mail'\)/);
+  assert.doesNotMatch(mailer, /\$_POST\[['"](?:to|subject|headers)/);
+  assert.match(storage, /listProjectUserRecords/);
+  assert.match(storage, /mergeProjectAuthors/);
+  assert.match(database, /public function listProjectUserRecords/);
+  assert.match(database, /public function mergeProjectAuthors/);
+  assert.match(jsonStorage, /public function listProjectUserRecords/);
+  assert.match(jsonStorage, /public function mergeProjectAuthors/);
+  assert.match(css, /\.rl-notification-recipients/);
+  assert.match(css, /\.rl-notification-email-form/);
+  assert.match(css, /\.rl-email-linked/);
+  for (const translations of [en, pl]) {
+    assert.ok(translations.emailNotifications);
+    assert.ok(translations.notificationsManualOnly);
+    assert.ok(translations.emailPrivacyHint);
+    assert.ok(translations.notificationRateLimited);
+    assert.ok(translations.linkedDevices);
+  }
+});
+
 test('API hides author ownership identifiers and enforces configurable demo limits', async () => {
   const [api, limits, bootstrap] = await Promise.all([
     read('api/index.php'),

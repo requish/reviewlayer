@@ -5,8 +5,11 @@ declare(strict_types=1);
 use ReviewLayer\BackupException;
 use ReviewLayer\BackupService;
 use ReviewLayer\ClearService;
+use ReviewLayer\NotificationException;
+use ReviewLayer\NotificationService;
 use ReviewLayer\Security;
 use ReviewLayer\SecurityException;
+use ReviewLayer\StorageInterface;
 use ReviewLayer\StorageNotFoundException;
 use ReviewLayer\UsageLimitException;
 use ReviewLayer\UsageLimits;
@@ -168,11 +171,61 @@ function publicPin(array $pin): array
     return $pin;
 }
 
+/** @return array{author_id:string,author_name:string} */
+function canonicalAuthorIdentity(
+    NotificationService $notifications,
+    StorageInterface $storage,
+    string $projectKey,
+    string $authorId,
+    string $authorName
+): array {
+    $canonicalAuthorId = $notifications->resolveAuthorId($projectKey, $authorId);
+    if (hash_equals($canonicalAuthorId, $authorId)) {
+        return ['author_id' => $authorId, 'author_name' => $authorName];
+    }
+    foreach ($storage->listProjectUserRecords($projectKey) as $user) {
+        if (hash_equals((string) ($user['author_id'] ?? ''), $canonicalAuthorId)) {
+            return [
+                'author_id' => $canonicalAuthorId,
+                'author_name' => (string) ($user['author_name'] ?? $authorName),
+            ];
+        }
+    }
+    return ['author_id' => $authorId, 'author_name' => $authorName];
+}
+
+function respondVerificationPage(bool $success, string $language, bool $linked = false): never
+{
+    $polish = $language === 'pl';
+    $title = $success
+        ? ($polish ? 'Adres e-mail potwierdzony' : 'Email address confirmed')
+        : ($polish ? 'Nie udało się potwierdzić adresu' : 'Email confirmation failed');
+    $message = $success
+        ? ($linked
+            ? ($polish ? 'Urządzenie zostało połączone z Twoją istniejącą tożsamością komentującego. Możesz zamknąć tę kartę.' : 'This device was linked to your existing commenter identity. You can close this tab.')
+            : ($polish ? 'Możesz zamknąć tę kartę i wrócić do ReviewLayer.' : 'You can close this tab and return to ReviewLayer.'))
+        : ($polish ? 'Link jest nieprawidłowy, wygasł albo został już użyty.' : 'The link is invalid, expired, or has already been used.');
+    http_response_code($success ? 200 : 400);
+    header('Content-Type: text/html; charset=utf-8');
+    header('Cache-Control: no-store, private');
+    header('X-Content-Type-Options: nosniff');
+    header('Referrer-Policy: no-referrer');
+    header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+    echo '<!doctype html><html lang="' . ($polish ? 'pl' : 'en') . '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>' . htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</title><style>html{color-scheme:light;font-family:system-ui,sans-serif;background:#f4f6f9;color:#18202d}body{min-height:100vh;display:grid;place-items:center;margin:0;padding:24px;box-sizing:border-box}.card{width:min(100%,480px);padding:32px;background:#fff;border:1px solid #d6dce6;border-radius:16px;box-shadow:0 18px 50px rgba(24,32,45,.14)}.mark{width:44px;height:44px;display:grid;place-items:center;margin-bottom:22px;color:#fff;font-size:24px;font-weight:700;background:' . ($success ? '#08775a' : '#8f1d15') . ';border-radius:50%}h1{margin:0 0 10px;font-size:26px;line-height:1.2}p{margin:0;color:#667085;line-height:1.6}</style></head><body><main class="card"><div class="mark" aria-hidden="true">' . ($success ? '✓' : '!') . '</div><h1>' . htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</h1><p>' . htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</p></main></body></html>';
+    exit;
+}
+
 try {
     $config = ReviewLayer\loadConfig();
     $storage = ReviewLayer\createStorage($config);
     $security = new Security($config);
     $usageLimits = new UsageLimits($storage, $config);
+    $notifications = new NotificationService(dirname(__DIR__) . '/data', $config);
+    try {
+        $notifications->synchronizeLinkedAuthors($storage);
+    } catch (Throwable $error) {
+        error_log('[ReviewLayer] Deferred author synchronization: ' . $error->getMessage());
+    }
     $action = isset($_GET['action']) && is_string($_GET['action']) ? $_GET['action'] : 'health';
 
     if ($action === 'health') {
@@ -194,11 +247,25 @@ try {
             'allow_guests' => (bool) $config['ALLOW_GUESTS'],
             'admin_code_configured' => $security->adminCodeConfigured(),
             'admin_actions_enabled' => $security->adminActionsEnabled(),
+            'notifications_available' => $notifications->isAvailable(),
             'breakpoints' => [
                 'mobile' => (int) $config['MOBILE_BREAKPOINT'],
                 'desktop' => (int) $config['DESKTOP_BREAKPOINT'],
             ],
         ], null);
+    }
+
+    if ($action === 'verify-email') {
+        ReviewLayer\requireMethod('GET');
+        $language = 'en';
+        try {
+            $result = $notifications->verify($storage, Validation::string($_GET['token'] ?? null, 'token', 80, 100));
+            $language = (string) ($result['language'] ?? 'en');
+            respondVerificationPage(true, $language, (bool) ($result['linked'] ?? false));
+        } catch (Throwable) {
+            $requestedLanguage = isset($_GET['lang']) && $_GET['lang'] === 'pl' ? 'pl' : 'en';
+            respondVerificationPage(false, $requestedLanguage);
+        }
     }
 
     if ($action !== 'admin-clear') {
@@ -240,13 +307,83 @@ try {
     $security->rateLimit($action);
     $body = ReviewLayer\jsonBody();
 
+    if ($action === 'notification-settings') {
+        ReviewLayer\requireMethod('POST');
+        $settings = $notifications->settings(
+            $storage,
+            Validation::projectKey($body['project_key'] ?? null),
+            Validation::uuid($body['author_id'] ?? null, 'author_id'),
+            Validation::browserSecret($body['author_secret'] ?? null),
+            Validation::oneOf($body['language'] ?? null, 'language', ['pl', 'en'])
+        );
+        ReviewLayer\respond(true, ['settings' => $settings], null);
+    }
+
+    if ($action === 'request-email-verification') {
+        ReviewLayer\requireMethod('POST');
+        $settings = $notifications->requestVerification(
+            $storage,
+            Validation::projectKey($body['project_key'] ?? null),
+            Validation::uuid($body['author_id'] ?? null, 'author_id'),
+            Validation::browserSecret($body['author_secret'] ?? null),
+            Validation::oneOf($body['language'] ?? null, 'language', ['pl', 'en']),
+            Validation::email($body['email'] ?? null)
+        );
+        ReviewLayer\respond(true, ['settings' => $settings], null, 201);
+    }
+
+    if ($action === 'remove-notification-email') {
+        ReviewLayer\requireMethod('POST', 'DELETE');
+        $settings = $notifications->removeEmail(
+            $storage,
+            Validation::projectKey($body['project_key'] ?? null),
+            Validation::uuid($body['author_id'] ?? null, 'author_id'),
+            Validation::browserSecret($body['author_secret'] ?? null),
+            Validation::oneOf($body['language'] ?? null, 'language', ['pl', 'en'])
+        );
+        ReviewLayer\respond(true, ['settings' => $settings], null);
+    }
+
+    if ($action === 'list-notification-recipients') {
+        ReviewLayer\requireMethod('POST');
+        $recipients = $notifications->recipients(
+            $storage,
+            Validation::projectKey($body['project_key'] ?? null),
+            Validation::uuid($body['author_id'] ?? null, 'author_id'),
+            Validation::browserSecret($body['author_secret'] ?? null),
+            Validation::oneOf($body['language'] ?? null, 'language', ['pl', 'en'])
+        );
+        ReviewLayer\respond(true, ['recipients' => $recipients], null);
+    }
+
+    if ($action === 'send-notification') {
+        ReviewLayer\requireMethod('POST');
+        $notifications->send(
+            $storage,
+            Validation::projectKey($body['project_key'] ?? null),
+            Validation::uuid($body['author_id'] ?? null, 'author_id'),
+            Validation::browserSecret($body['author_secret'] ?? null),
+            Validation::oneOf($body['language'] ?? null, 'language', ['pl', 'en']),
+            Validation::uuid($body['recipient_id'] ?? null, 'recipient_id'),
+            Validation::pageUrl($body['page_url'] ?? null)
+        );
+        ReviewLayer\respond(true, ['sent' => true], null);
+    }
+
     if ($action === 'create-pin') {
         ReviewLayer\requireMethod('POST');
         $projectKey = Validation::projectKey($body['project_key'] ?? null);
         $context = Validation::pageContext($body['page_key'] ?? null, $body['page_url'] ?? null);
-        $authorId = Validation::uuid($body['author_id'] ?? null, 'author_id');
+        $identity = canonicalAuthorIdentity(
+            $notifications,
+            $storage,
+            $projectKey,
+            Validation::uuid($body['author_id'] ?? null, 'author_id'),
+            Validation::string($body['author_name'] ?? null, 'author_name', 1, (int) $config['MAX_NAME_LENGTH'])
+        );
+        $authorId = $identity['author_id'];
+        $authorName = $identity['author_name'];
         $usageLimits->assertCanCreatePin($projectKey, $authorId);
-        $authorName = Validation::string($body['author_name'] ?? null, 'author_name', 1, (int) $config['MAX_NAME_LENGTH']);
         $messageText = Validation::string($body['message'] ?? null, 'message', 1, (int) $config['MAX_MESSAGE_LENGTH']);
         $fingerprint = Validation::object($body['target_fingerprint'] ?? null, 'target_fingerprint');
         $anchor = sanitizeAnchor(Validation::object($body['anchor'] ?? null, 'anchor'));
@@ -289,13 +426,20 @@ try {
         $projectKey = Validation::projectKey($body['project_key'] ?? null);
         $pinId = Validation::uuid($_GET['id'] ?? null);
         $usageLimits->assertCanAddMessage($pinId);
+        $identity = canonicalAuthorIdentity(
+            $notifications,
+            $storage,
+            $projectKey,
+            Validation::uuid($body['author_id'] ?? null, 'author_id'),
+            Validation::string($body['author_name'] ?? null, 'author_name', 1, (int) $config['MAX_NAME_LENGTH'])
+        );
         $now = gmdate('c');
         $message = [
             'id' => ReviewLayer\uuidV4(),
             'pin_id' => $pinId,
             'project_key' => $projectKey,
-            'author_id' => Validation::uuid($body['author_id'] ?? null, 'author_id'),
-            'author_name' => Validation::string($body['author_name'] ?? null, 'author_name', 1, (int) $config['MAX_NAME_LENGTH']),
+            'author_id' => $identity['author_id'],
+            'author_name' => $identity['author_name'],
             'message' => Validation::string($body['message'] ?? null, 'message', 1, (int) $config['MAX_MESSAGE_LENGTH']),
             'created_at' => $now,
             'updated_at' => $now,
@@ -320,7 +464,10 @@ try {
         ReviewLayer\requireMethod('DELETE', 'POST');
         $projectKey = Validation::projectKey($body['project_key'] ?? null);
         $id = Validation::uuid($_GET['id'] ?? null);
-        $authorId = Validation::uuid($body['author_id'] ?? null, 'author_id');
+        $authorId = $notifications->resolveAuthorId(
+            $projectKey,
+            Validation::uuid($body['author_id'] ?? null, 'author_id')
+        );
         $adminCode = isset($body['admin_code']) && is_string($body['admin_code']) ? $body['admin_code'] : '';
         $pin = $storage->getPin($id, $projectKey);
         if ($pin === null) {
@@ -337,7 +484,10 @@ try {
         ReviewLayer\requireMethod('DELETE', 'POST');
         $projectKey = Validation::projectKey($body['project_key'] ?? null);
         $id = Validation::uuid($_GET['id'] ?? null);
-        $authorId = Validation::uuid($body['author_id'] ?? null, 'author_id');
+        $authorId = $notifications->resolveAuthorId(
+            $projectKey,
+            Validation::uuid($body['author_id'] ?? null, 'author_id')
+        );
         $adminCode = isset($body['admin_code']) && is_string($body['admin_code']) ? $body['admin_code'] : '';
         $message = $storage->getMessage($id, $projectKey);
         if ($message === null) {
@@ -407,12 +557,27 @@ try {
             ($body['continue_without_backup'] ?? false) === true,
             $security->actorHash()
         );
+        try {
+            $notifications->pruneOrphanedProfiles($storage);
+        } catch (Throwable $notificationCleanupError) {
+            error_log('[ReviewLayer] Notification cleanup error: ' . $notificationCleanupError->getMessage());
+        }
         ReviewLayer\respond(true, $result, null);
     }
 
     ReviewLayer\respond(false, null, ['code' => 'NOT_FOUND', 'message' => 'API action not found.'], 404);
 } catch (SecurityException $error) {
     $status = $error->errorCode === 'RATE_LIMITED' ? 429 : 403;
+    ReviewLayer\respond(false, null, ['code' => $error->errorCode, 'message' => $error->getMessage()], $status);
+} catch (NotificationException $error) {
+    $status = match ($error->errorCode) {
+        'NOTIFICATION_IDENTITY_DENIED' => 403,
+        'NOTIFICATION_RATE_LIMITED' => 429,
+        'NOTIFICATIONS_UNAVAILABLE' => 503,
+        'MAIL_FAILED' => 502,
+        'VALIDATION_ERROR' => 422,
+        default => 409,
+    };
     ReviewLayer\respond(false, null, ['code' => $error->errorCode, 'message' => $error->getMessage()], $status);
 } catch (BackupException $error) {
     error_log('[ReviewLayer] Backup error: ' . $error->getMessage());

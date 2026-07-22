@@ -91,6 +91,73 @@ final class Database implements StorageInterface
         }, $statement->fetchAll());
     }
 
+    public function listProjectUserRecords(string $projectKey): array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT author_id, author_name, color_index, sequence_number, created_at, updated_at
+             FROM project_users
+             WHERE project_key = :project_key
+             ORDER BY sequence_number ASC'
+        );
+        $statement->execute(['project_key' => $projectKey]);
+        return array_map(static function (array $row): array {
+            $row['color_index'] = (int) $row['color_index'];
+            $row['sequence_number'] = (int) $row['sequence_number'];
+            return $row;
+        }, $statement->fetchAll());
+    }
+
+    public function mergeProjectAuthors(string $projectKey, string $canonicalAuthorId, string $sourceAuthorId): bool
+    {
+        if (hash_equals($canonicalAuthorId, $sourceAuthorId)) {
+            return false;
+        }
+        $this->pdo->beginTransaction();
+        try {
+            $select = $this->pdo->prepare(
+                'SELECT author_name, color_index FROM project_users
+                 WHERE project_key = :project_key AND author_id = :author_id LIMIT 1'
+            );
+            $select->execute(['project_key' => $projectKey, 'author_id' => $canonicalAuthorId]);
+            $canonical = $select->fetch();
+            $select->execute(['project_key' => $projectKey, 'author_id' => $sourceAuthorId]);
+            $source = $select->fetch();
+            if (!is_array($canonical) || !is_array($source)) {
+                $this->pdo->rollBack();
+                return false;
+            }
+
+            $parameters = [
+                'project_key' => $projectKey,
+                'canonical_author_id' => $canonicalAuthorId,
+                'source_author_id' => $sourceAuthorId,
+                'author_name' => (string) $canonical['author_name'],
+            ];
+            $messages = $this->pdo->prepare(
+                'UPDATE messages SET author_id = :canonical_author_id, author_name = :author_name
+                 WHERE author_id = :source_author_id
+                 AND pin_id IN (SELECT id FROM pins WHERE project_key = :project_key)'
+            );
+            $messages->execute($parameters);
+            $pins = $this->pdo->prepare(
+                'UPDATE pins SET author_id = :canonical_author_id, author_name = :author_name
+                 WHERE project_key = :project_key AND author_id = :source_author_id'
+            );
+            $pins->execute($parameters);
+            $delete = $this->pdo->prepare(
+                'DELETE FROM project_users WHERE project_key = :project_key AND author_id = :source_author_id'
+            );
+            $delete->execute(['project_key' => $projectKey, 'source_author_id' => $sourceAuthorId]);
+            $this->pdo->commit();
+            return true;
+        } catch (Throwable $error) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            throw $error;
+        }
+    }
+
     public function getPin(string $id, string $projectKey): ?array
     {
         $statement = $this->pdo->prepare(

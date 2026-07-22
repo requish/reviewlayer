@@ -8,6 +8,7 @@ ReviewLayer is a lightweight feedback tool for website prototypes. Clients can p
 - SQLite with PDO (recommended) or writable JSON storage
 - write access to `reviewlayer/data` and `reviewlayer/data/backups`
 - ReviewLayer served from the same origin as the reviewed website
+- optional manual email notifications require the server's ordinary PHP `mail()` transport and Sodium or OpenSSL
 
 ## Quick start
 
@@ -20,7 +21,9 @@ ReviewLayer is a lightweight feedback tool for website prototypes. Clients can p
 <script src="/reviewlayer/embed.js" data-project="shop-redesign" data-lang="en" defer></script>
 ```
 
-The included `index.html` is a simple integration test page.
+The included `index.html` is the product demo and also exercises the live integration.
+
+Email notifications are never automatic. A commenter must verify their address, and every message requires an explicit click; ReviewLayer stores addresses encrypted and applies persistent anti-abuse limits.
 
 ## Documentation
 

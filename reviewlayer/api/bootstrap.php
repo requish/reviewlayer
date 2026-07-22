@@ -7,7 +7,7 @@ namespace ReviewLayer;
 use RuntimeException;
 use Throwable;
 
-const REVIEWLAYER_VERSION = '1.2.9';
+const REVIEWLAYER_VERSION = '1.3.3';
 
 require_once __DIR__ . '/StorageInterface.php';
 require_once __DIR__ . '/Validation.php';
@@ -17,6 +17,8 @@ require_once __DIR__ . '/JsonStorage.php';
 require_once __DIR__ . '/BackupService.php';
 require_once __DIR__ . '/ClearService.php';
 require_once __DIR__ . '/UsageLimits.php';
+require_once __DIR__ . '/NativeMailService.php';
+require_once __DIR__ . '/NotificationService.php';
 
 /** @return array<string, mixed> */
 function loadConfig(): array
@@ -44,6 +46,21 @@ function loadConfig(): array
         'MAX_TOTAL_PINS' => 0,
         'MAX_TOTAL_MESSAGES' => 0,
         'MAX_BACKUPS' => 0,
+        'NOTIFICATIONS_ENABLED' => true,
+        'NOTIFICATION_FROM_EMAIL' => '',
+        'NOTIFICATION_FROM_NAME' => 'ReviewLayer',
+        'NOTIFICATION_PUBLIC_BASE_URL' => '',
+        'NOTIFICATION_ENCRYPTION_KEY' => '',
+        'NOTIFICATION_COOLDOWN_SECONDS' => 900,
+        'NOTIFICATION_HOURLY_LIMIT' => 5,
+        'NOTIFICATION_DAILY_LIMIT' => 20,
+        'NOTIFICATION_RECIPIENT_DAILY_LIMIT' => 20,
+        'NOTIFICATION_IP_HOURLY_LIMIT' => 10,
+        'NOTIFICATION_IP_DAILY_LIMIT' => 40,
+        'EMAIL_VERIFICATION_COOLDOWN_SECONDS' => 300,
+        'EMAIL_VERIFICATION_DAILY_LIMIT' => 5,
+        'EMAIL_VERIFICATION_IP_DAILY_LIMIT' => 10,
+        'EMAIL_VERIFICATION_TTL_SECONDS' => 1800,
     ];
     $configPath = dirname(__DIR__) . '/config.php';
     $custom = [];
@@ -65,6 +82,11 @@ function loadConfig(): array
         throw new RuntimeException('Text limits are invalid.');
     }
     foreach (['MAX_PINS_PER_AUTHOR', 'MAX_MESSAGES_PER_PIN', 'MAX_TOTAL_PINS', 'MAX_TOTAL_MESSAGES', 'MAX_BACKUPS'] as $limitKey) {
+        if ((int) $config[$limitKey] < 0) {
+            throw new RuntimeException($limitKey . ' must be zero or greater.');
+        }
+    }
+    foreach (['NOTIFICATION_COOLDOWN_SECONDS', 'NOTIFICATION_HOURLY_LIMIT', 'NOTIFICATION_DAILY_LIMIT', 'NOTIFICATION_RECIPIENT_DAILY_LIMIT', 'NOTIFICATION_IP_HOURLY_LIMIT', 'NOTIFICATION_IP_DAILY_LIMIT', 'EMAIL_VERIFICATION_COOLDOWN_SECONDS', 'EMAIL_VERIFICATION_DAILY_LIMIT', 'EMAIL_VERIFICATION_IP_DAILY_LIMIT', 'EMAIL_VERIFICATION_TTL_SECONDS'] as $limitKey) {
         if ((int) $config[$limitKey] < 0) {
             throw new RuntimeException($limitKey . ' must be zero or greater.');
         }

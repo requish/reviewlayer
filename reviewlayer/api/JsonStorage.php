@@ -103,6 +103,68 @@ final class JsonStorage implements StorageInterface
         });
     }
 
+    public function listProjectUserRecords(string $projectKey): array
+    {
+        return $this->read(function (array $data) use ($projectKey): array {
+            $users = array_values(array_filter($data['users'], static fn (array $user): bool =>
+                $user['project_key'] === $projectKey
+            ));
+            usort($users, static fn (array $a, array $b): int =>
+                (int) $a['sequence_number'] <=> (int) $b['sequence_number']
+            );
+            return array_map(static fn (array $user): array => [
+                'author_id' => (string) $user['author_id'],
+                'author_name' => (string) $user['author_name'],
+                'color_index' => (int) $user['color_index'],
+                'sequence_number' => (int) $user['sequence_number'],
+                'created_at' => (string) $user['created_at'],
+                'updated_at' => (string) $user['updated_at'],
+            ], $users);
+        });
+    }
+
+    public function mergeProjectAuthors(string $projectKey, string $canonicalAuthorId, string $sourceAuthorId): bool
+    {
+        if (hash_equals($canonicalAuthorId, $sourceAuthorId)) {
+            return false;
+        }
+        return $this->mutate(function (array &$data) use ($projectKey, $canonicalAuthorId, $sourceAuthorId): bool {
+            $canonical = null;
+            $sourceFound = false;
+            foreach ($data['users'] as $user) {
+                if ($user['project_key'] !== $projectKey) continue;
+                if ($user['author_id'] === $canonicalAuthorId) $canonical = $user;
+                if ($user['author_id'] === $sourceAuthorId) $sourceFound = true;
+            }
+            if (!is_array($canonical) || !$sourceFound) {
+                return false;
+            }
+
+            $projectPins = [];
+            foreach ($data['pins'] as &$pin) {
+                if ($pin['project_key'] !== $projectKey) continue;
+                $projectPins[(string) $pin['id']] = true;
+                if ($pin['author_id'] !== $sourceAuthorId) continue;
+                $pin['author_id'] = $canonicalAuthorId;
+                $pin['author_name'] = (string) $canonical['author_name'];
+            }
+            unset($pin);
+            foreach ($data['messages'] as &$message) {
+                if (!isset($projectPins[(string) $message['pin_id']]) || $message['author_id'] !== $sourceAuthorId) continue;
+                $message['author_id'] = $canonicalAuthorId;
+                $message['author_name'] = (string) $canonical['author_name'];
+            }
+            unset($message);
+            $data['users'] = array_values(array_filter(
+                $data['users'],
+                static fn (array $user): bool => !(
+                    $user['project_key'] === $projectKey && $user['author_id'] === $sourceAuthorId
+                )
+            ));
+            return true;
+        });
+    }
+
     public function getPin(string $id, string $projectKey): ?array
     {
         return $this->read(function (array $data) use ($id, $projectKey): ?array {
