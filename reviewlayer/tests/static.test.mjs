@@ -246,6 +246,12 @@ test('manual email notifications keep addresses server-side and require browser 
   assert.doesNotMatch(app, /name="notification_email"[^>]*\brequired\b/);
   assert.match(app, /async submitPin\(form\)[\s\S]*await this\.api\.createPin[\s\S]*await this\.api\.requestEmailVerification/);
   assert.match(app, /pinSavedVerificationFailed/);
+  const replyForm = app.match(/<form data-form="reply"[\s\S]*?<\/form>/)?.[0] || '';
+  assert.match(replyForm, /\$\{replyEmailField\}/);
+  assert.match(replyForm, /data-role="reply-submit"/);
+  assert.match(app, /const replyEmailField = this\.bootstrapData\?\.notifications_available === true && !this\.authorEstablished/);
+  assert.match(app, /async submitReply\(form\)[\s\S]*await this\.api\.addMessage[\s\S]*await this\.api\.requestEmailVerification/);
+  assert.match(app, /replySavedVerificationFailed/);
   assert.match(client, /requestEmailVerification\(body, signal\)/);
   assert.match(client, /listNotificationRecipients\(body, signal\)/);
   assert.match(client, /sendNotification\(body, signal\)/);
@@ -294,6 +300,9 @@ test('manual email notifications keep addresses server-side and require browser 
     assert.ok(translations.savePinAndVerify);
     assert.ok(translations.pinSavedVerificationSent);
     assert.ok(translations.pinSavedVerificationFailed);
+    assert.ok(translations.sendReplyAndVerify);
+    assert.ok(translations.replySavedVerificationSent);
+    assert.ok(translations.replySavedVerificationFailed);
   }
 });
 

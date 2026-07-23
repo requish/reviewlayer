@@ -1,6 +1,6 @@
 # ReviewLayer
 
-ReviewLayer 1.3.6 is an independent annotation overlay for website prototypes. Clients can attach a note to a page element, discuss it, resolve it, and revisit it on another device. Installation needs no Node.js, build process, MySQL, CDN, or SaaS service.
+ReviewLayer 1.3.7 is an independent annotation overlay for website prototypes. Clients can attach a note to a page element, discuss it, resolve it, and revisit it on another device. Installation needs no Node.js, build process, MySQL, CDN, or SaaS service.
 
 ## Server requirements
 
@@ -99,7 +99,7 @@ The message lists only pins created by the sender and events added by that sende
 
 Status history starts when this version is installed. Existing pins, messages, numbering, and current statuses remain unchanged; later status changes append themselves automatically. SQLite creates the `pin_status_events` table with `CREATE TABLE IF NOT EXISTS`, while JSON adds an optional `status_events` array. Portable backups include this history and older backups without it remain restorable.
 
-A browser that has not yet established a commenter in the project also shows an optional email field when its first pin is created. Supplying it saves the pin first and then sends one verification link; leaving it empty skips the step. If email delivery fails, the pin remains saved and verification can be retried in Settings. Confirming the same email on another device links the browser to the existing commenter.
+A browser that has not yet established a commenter in the project also shows an optional email field with its first pin or first reply. Supplying it saves the contribution first and then sends one verification link; leaving it empty skips the step. If email delivery fails, the pin or reply remains saved and verification can be retried in Settings. Confirming the same email on another device links the browser to the existing commenter.
 
 A commenter can add an address in Settings after creating a pin or comment. A single-use confirmation link must be opened before that person can receive notifications. Other browsers receive only the commenter's display name and a ready/not-ready flag; the address itself is never returned by the API. The sender chooses an opaque recipient ID, not an arbitrary email address.
 

@@ -11,7 +11,7 @@ import {
   removeReviewLayerParameters
 } from './page-key.js';
 
-const VERSION = '1.3.6';
+const VERSION = '1.3.7';
 const MATERIAL_ICON_FONT_FAMILY = 'ReviewLayer Material Symbols';
 const FILTERS = ['all', 'mobile', 'tablet', 'desktop'];
 const DEVICE_ICONS = Object.freeze({
@@ -1109,14 +1109,18 @@ class ReviewLayerApp {
     const statusAction = pin.status === 'resolved'
       ? `<button class="rl-button rl-status-action is-reopen" type="button" data-action="toggle-status">${materialIcon('reopen_window')}<span>${escapeHtml(this.t('reopen'))}</span></button>`
       : `<button class="rl-button rl-status-action" type="button" data-action="toggle-status">${materialIcon('select_check_box')}<span>${escapeHtml(this.t('resolve'))}</span></button>`;
+    const replyEmailField = this.bootstrapData?.notifications_available === true && !this.authorEstablished
+      ? `<label>${escapeHtml(this.t('firstPinEmailLabel'))}<input name="notification_email" type="email" maxlength="254" autocomplete="email" inputmode="email" placeholder="name@example.com"><small>${escapeHtml(this.t('firstPinEmailHint'))}</small></label>`
+      : '';
     this.panel.innerHTML = this.panelFrame(title, `
       ${hiddenNotice}
       <div class="rl-status-row"><span class="rl-status is-${escapeHtml(pin.status)}">${escapeHtml(this.t(pin.status === 'resolved' ? 'statusResolved' : 'statusOpen'))}</span>${statusAction}<button class="rl-icon-button rl-small" type="button" data-action="refresh-pin" aria-label="${escapeHtml(this.t('refresh'))}" title="${escapeHtml(this.t('refresh'))}">${materialIcon('refresh')}</button></div>
       <div class="rl-messages">${messages || `<p class="rl-empty">${escapeHtml(this.t('noMessages'))}</p>`}</div>
       <form data-form="reply" class="rl-form rl-reply-form">
         ${this.authorName ? '' : `<label>${escapeHtml(this.t('yourName'))}<input name="author_name" maxlength="80" required autocomplete="name"></label>`}
+        ${replyEmailField}
         <label>${escapeHtml(this.t('reply'))}<textarea name="message" maxlength="5000" required rows="3" placeholder="${escapeHtml(this.t('replyPlaceholder'))}"></textarea></label>
-        <button class="rl-button rl-button-primary" type="submit">${escapeHtml(this.t('send'))}</button>
+        <button class="rl-button rl-button-primary" type="submit" data-role="reply-submit">${escapeHtml(this.t('send'))}</button>
       </form>
       <details class="rl-details"><summary>${escapeHtml(this.t('technicalDetails'))}</summary>
         <dl>
@@ -1131,6 +1135,11 @@ class ReviewLayerApp {
         </dl>
       </details>
       <button class="rl-button rl-button-danger" type="button" data-action="delete-pin">${escapeHtml(this.t('deletePin'))}</button>`, '', this.deviceBadge(viewport.device_type, 'title'), locateAction, backToProjectPins);
+    const replyEmailInput = this.panel.querySelector('form[data-form="reply"] input[name="notification_email"]');
+    const replySubmitButton = this.panel.querySelector('[data-role="reply-submit"]');
+    replyEmailInput?.addEventListener('input', () => {
+      replySubmitButton.textContent = this.t(replyEmailInput.value.trim() ? 'sendReplyAndVerify' : 'send');
+    });
   }
 
   locateCurrentPin() {
@@ -1175,14 +1184,16 @@ class ReviewLayerApp {
 
   async submitReply(form) {
     if (!this.currentPin?.id) return;
+    const pinId = this.currentPin.id;
     const formData = new FormData(form);
     const authorName = String(formData.get('author_name') || this.authorName).trim();
+    const notificationEmail = String(formData.get('notification_email') || '').trim();
     const message = String(formData.get('message') || '').trim();
     if (!authorName) return this.showToast(this.t('nameRequired'), true);
     if (!message) return this.showToast(this.t('commentRequired'), true);
     this.setFormBusy(form, true);
     try {
-      await this.api.addMessage(this.currentPin.id, {
+      await this.api.addMessage(pinId, {
         project_key: this.projectKey,
         author_id: this.authorId,
         author_name: authorName,
@@ -1191,8 +1202,25 @@ class ReviewLayerApp {
       this.authorName = authorName;
       safeSet(localStorage, 'reviewlayer:author-name', authorName);
       this.markAuthorEstablished();
-      this.showToast(this.t('replySent'));
-      await this.openConversation(this.currentPin.id, true);
+      await this.openConversation(pinId, true);
+      if (notificationEmail) {
+        try {
+          const result = await this.api.requestEmailVerification({
+            ...this.notificationIdentity(),
+            email: notificationEmail
+          });
+          this.notificationSettings = result.settings || null;
+          this.syncCanonicalNotificationIdentity(this.notificationSettings);
+          this.showToast(result.settings?.verification_sent === false
+            ? `${this.t('replySent')} ${this.t('emailAlreadyVerified')}`
+            : this.t('replySavedVerificationSent'));
+        } catch (error) {
+          console.warn('[ReviewLayer] The reply was saved, but email verification could not be started.', error?.code || error);
+          this.showToast(this.t('replySavedVerificationFailed'), true);
+        }
+      } else {
+        this.showToast(this.t('replySent'));
+      }
     } catch (error) {
       this.handleError(error);
     } finally {
