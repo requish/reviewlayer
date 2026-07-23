@@ -241,6 +241,8 @@ test('manual email notifications keep addresses server-side and require browser 
   assert.match(app, /data-action="notify-user"/);
   assert.match(app, /data-form="notification-email"/);
   assert.match(app, /this\.api\.sendNotification/);
+  assert.match(app, /linked_devices[\s\S]*materialIcon\('laptop'\)[\s\S]*linkedDevices/);
+  assert.doesNotMatch(app, /materialIcon\('devices'\)/);
   assert.match(app, /reviewlayer:\$\{this\.projectKey\}:author-established/);
   assert.match(app, /!this\.authorEstablished[\s\S]*name="notification_email" type="email"/);
   assert.doesNotMatch(app, /name="notification_email"[^>]*\brequired\b/);

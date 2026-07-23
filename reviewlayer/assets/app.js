@@ -11,7 +11,7 @@ import {
   removeReviewLayerParameters
 } from './page-key.js';
 
-const VERSION = '1.3.7';
+const VERSION = '1.3.8';
 const MATERIAL_ICON_FONT_FAMILY = 'ReviewLayer Material Symbols';
 const FILTERS = ['all', 'mobile', 'tablet', 'desktop'];
 const DEVICE_ICONS = Object.freeze({
@@ -1521,7 +1521,7 @@ class ReviewLayerApp {
       ? `<p class="rl-email-pending">${escapeHtml(this.t('emailVerificationPending', { email: settings.pending_email_masked }))}</p>`
       : '';
     const linked = settings.email_verified && Number(settings.linked_devices) > 1
-      ? `<p class="rl-email-linked">${materialIcon('devices')}<span>${escapeHtml(this.t('linkedDevices', { count: settings.linked_devices }))}</span></p>`
+      ? `<p class="rl-email-linked">${materialIcon('laptop')}<span>${escapeHtml(this.t('linkedDevices', { count: settings.linked_devices }))}</span></p>`
       : '';
     const remove = settings.email_verified
       ? `<button class="rl-text-button rl-danger-text" type="button" data-action="remove-notification-email">${escapeHtml(this.t('removeEmailAddress'))}</button>`

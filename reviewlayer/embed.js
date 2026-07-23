@@ -20,7 +20,7 @@
   };
 
   const start = () => {
-    import(`${baseUrl}assets/app.js?v=1.3.7`)
+    import(`${baseUrl}assets/app.js?v=1.3.8`)
       .then(({ startReviewLayer }) => startReviewLayer(options))
       .catch((error) => {
         window.__reviewLayerLoaded = false;
