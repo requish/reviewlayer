@@ -1,6 +1,6 @@
 # ReviewLayer
 
-ReviewLayer 1.3.5 to niezależna nakładka do komentowania prototypów stron. Klient może przypiąć uwagę do elementu strony, prowadzić rozmowę, oznaczyć ją jako rozwiązaną i wrócić do niej na innym urządzeniu. Instalacja działa bez Node.js, procesu build, MySQL, CDN i usług SaaS.
+ReviewLayer 1.3.6 to niezależna nakładka do komentowania prototypów stron. Klient może przypiąć uwagę do elementu strony, prowadzić rozmowę, oznaczyć ją jako rozwiązaną i wrócić do niej na innym urządzeniu. Instalacja działa bez Node.js, procesu build, MySQL, CDN i usług SaaS.
 
 ## Wymagania serwera
 
@@ -98,6 +98,8 @@ Ikona wysyłania otwiera listę komentujących w projekcie. Kliknięcie „Powia
 Wiadomość wymienia wyłącznie pinezki utworzone przez nadawcę oraz zdarzenia wykonane przez niego na bieżącej stronie, zaczynając od najnowszych pinezek. Kolejne komentarze są grupowane (`komentarz ×3`), natomiast `rozwiązana` i `otwarta ponownie` zachowują kolejność chronologiczną. Niepowiązane pinezki ani treść komentarzy nigdy nie są umieszczane w e-mailu.
 
 Historia statusów zaczyna się od instalacji tej wersji. Istniejące pinezki, komentarze, numeracja i bieżące statusy pozostają bez zmian; późniejsze zmiany statusu dopisują się automatycznie. SQLite tworzy tabelę `pin_status_events` przez `CREATE TABLE IF NOT EXISTS`, a JSON dodaje opcjonalną tablicę `status_events`. Przenośne kopie zawierają tę historię, a starsze backupy bez niej nadal można przywrócić.
+
+Przeglądarka, która nie utworzyła jeszcze komentatora w projekcie, pokazuje przy pierwszej pinezce również opcjonalne pole e-mail. Podanie adresu najpierw zapisuje pinezkę, a następnie wysyła jeden link potwierdzający; puste pole pomija ten krok. Niepowodzenie wysyłki nie usuwa pinezki, a weryfikację można ponowić w Ustawieniach. Potwierdzenie tego samego adresu na innym urządzeniu łączy przeglądarkę z istniejącym komentatorem.
 
 Komentujący może dodać adres w Ustawieniach po utworzeniu pinezki lub komentarza. Zanim będzie można go powiadamiać, musi otworzyć jednorazowy link potwierdzający. Inne przeglądarki otrzymują wyłącznie imię oraz informację gotowy/brak adresu; sam e-mail nigdy nie jest zwracany przez API. Nadawca wybiera nieprzewidywalny identyfikator odbiorcy, a nie dowolny adres e-mail.
 

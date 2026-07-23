@@ -11,7 +11,7 @@ import {
   removeReviewLayerParameters
 } from './page-key.js';
 
-const VERSION = '1.3.5';
+const VERSION = '1.3.6';
 const MATERIAL_ICON_FONT_FAMILY = 'ReviewLayer Material Symbols';
 const FILTERS = ['all', 'mobile', 'tablet', 'desktop'];
 const DEVICE_ICONS = Object.freeze({
@@ -266,6 +266,8 @@ class ReviewLayerApp {
     this.authorId = safeGet(localStorage, this.authorIdKey) || legacyAuthorId || createUuid();
     this.authorSecret = safeGet(localStorage, 'reviewlayer:author-secret') || createBrowserSecret();
     this.authorName = safeGet(localStorage, 'reviewlayer:author-name');
+    this.authorEstablishedKey = `reviewlayer:${this.projectKey}:author-established`;
+    this.authorEstablished = safeGet(localStorage, this.authorEstablishedKey) === 'true';
     this.accessCode = safeGet(sessionStorage, `reviewlayer:${this.projectKey}:access-code`);
     this.visibilityKey = `reviewlayer:${this.projectKey}:pins-visible`;
     this.pinsVisible = safeGet(localStorage, this.visibilityKey, 'true') !== 'false';
@@ -402,8 +404,14 @@ class ReviewLayerApp {
     };
   }
 
+  markAuthorEstablished() {
+    this.authorEstablished = true;
+    safeSet(localStorage, this.authorEstablishedKey, 'true');
+  }
+
   syncCanonicalNotificationIdentity(settings) {
     if (!settings || typeof settings !== 'object') return;
+    this.markAuthorEstablished();
     const canonicalAuthorId = String(settings.canonical_author_id || '');
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(canonicalAuthorId)) {
       this.authorId = canonicalAuthorId;
@@ -942,13 +950,22 @@ class ReviewLayerApp {
   }
 
   openCreatePanel() {
+    const emailField = this.bootstrapData?.notifications_available === true && !this.authorEstablished
+      ? `<label>${escapeHtml(this.t('firstPinEmailLabel'))}<input name="notification_email" type="email" maxlength="254" autocomplete="email" inputmode="email" placeholder="name@example.com"><small>${escapeHtml(this.t('firstPinEmailHint'))}</small></label>`
+      : '';
     this.openPanel('create');
     this.panel.innerHTML = this.panelFrame(this.t('newPin'), `
       <form data-form="create-pin" class="rl-form">
         <label>${escapeHtml(this.t('yourName'))}<input name="author_name" maxlength="80" required autocomplete="name" value="${escapeHtml(this.authorName)}"></label>
+        ${emailField}
         <label>${escapeHtml(this.t('firstComment'))}<textarea name="message" maxlength="5000" required rows="6" placeholder="${escapeHtml(this.t('commentPlaceholder'))}"></textarea></label>
-        <div class="rl-form-actions"><button class="rl-button rl-button-muted" type="button" data-action="close-panel">${escapeHtml(this.t('cancel'))}</button><button class="rl-button rl-button-primary" type="submit">${escapeHtml(this.t('save'))}</button></div>
+        <div class="rl-form-actions"><button class="rl-button rl-button-muted" type="button" data-action="close-panel">${escapeHtml(this.t('cancel'))}</button><button class="rl-button rl-button-primary" type="submit" data-role="create-pin-submit">${escapeHtml(this.t('save'))}</button></div>
       </form>`);
+    const emailInput = this.panel.querySelector('input[name="notification_email"]');
+    const submitButton = this.panel.querySelector('[data-role="create-pin-submit"]');
+    emailInput?.addEventListener('input', () => {
+      submitButton.textContent = this.t(emailInput.value.trim() ? 'savePinAndVerify' : 'save');
+    });
     this.focusPanel('textarea');
   }
 
@@ -956,6 +973,7 @@ class ReviewLayerApp {
     if (!this.tempAnchor || !this.tempTarget) return;
     const formData = new FormData(form);
     const authorName = String(formData.get('author_name') || '').trim();
+    const notificationEmail = String(formData.get('notification_email') || '').trim();
     const message = String(formData.get('message') || '').trim();
     if (!authorName) return this.showToast(this.t('nameRequired'), true);
     if (!message) return this.showToast(this.t('commentRequired'), true);
@@ -985,6 +1003,7 @@ class ReviewLayerApp {
       }
       this.authorName = authorName;
       safeSet(localStorage, 'reviewlayer:author-name', authorName);
+      this.markAuthorEstablished();
       data.pin.message_count = 1;
       data.pin.last_message_at = data.pin.created_at || '';
       this.pins.push(data.pin);
@@ -994,7 +1013,24 @@ class ReviewLayerApp {
       this.tempPin.hidden = true;
       this.closePanel(false);
       this.renderPins();
-      this.showToast(this.t(this.pinsVisible ? 'pinSaved' : 'pinSavedWhileHidden'));
+      const savedMessage = this.t(this.pinsVisible ? 'pinSaved' : 'pinSavedWhileHidden');
+      this.showToast(savedMessage);
+      if (notificationEmail) {
+        try {
+          const result = await this.api.requestEmailVerification({
+            ...this.notificationIdentity(),
+            email: notificationEmail
+          });
+          this.notificationSettings = result.settings || null;
+          this.syncCanonicalNotificationIdentity(this.notificationSettings);
+          this.showToast(result.settings?.verification_sent === false
+            ? `${savedMessage} ${this.t('emailAlreadyVerified')}`
+            : this.t('pinSavedVerificationSent'));
+        } catch (error) {
+          console.warn('[ReviewLayer] The pin was saved, but email verification could not be started.', error?.code || error);
+          this.showToast(this.t('pinSavedVerificationFailed'), true);
+        }
+      }
     } catch (error) {
       this.handleError(error);
     } finally {
@@ -1154,6 +1190,7 @@ class ReviewLayerApp {
       });
       this.authorName = authorName;
       safeSet(localStorage, 'reviewlayer:author-name', authorName);
+      this.markAuthorEstablished();
       this.showToast(this.t('replySent'));
       await this.openConversation(this.currentPin.id, true);
     } catch (error) {

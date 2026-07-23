@@ -241,6 +241,11 @@ test('manual email notifications keep addresses server-side and require browser 
   assert.match(app, /data-action="notify-user"/);
   assert.match(app, /data-form="notification-email"/);
   assert.match(app, /this\.api\.sendNotification/);
+  assert.match(app, /reviewlayer:\$\{this\.projectKey\}:author-established/);
+  assert.match(app, /!this\.authorEstablished[\s\S]*name="notification_email" type="email"/);
+  assert.doesNotMatch(app, /name="notification_email"[^>]*\brequired\b/);
+  assert.match(app, /async submitPin\(form\)[\s\S]*await this\.api\.createPin[\s\S]*await this\.api\.requestEmailVerification/);
+  assert.match(app, /pinSavedVerificationFailed/);
   assert.match(client, /requestEmailVerification\(body, signal\)/);
   assert.match(client, /listNotificationRecipients\(body, signal\)/);
   assert.match(client, /sendNotification\(body, signal\)/);
@@ -284,6 +289,11 @@ test('manual email notifications keep addresses server-side and require browser 
     assert.ok(translations.emailPrivacyHint);
     assert.ok(translations.notificationRateLimited);
     assert.ok(translations.linkedDevices);
+    assert.ok(translations.firstPinEmailLabel);
+    assert.ok(translations.firstPinEmailHint);
+    assert.ok(translations.savePinAndVerify);
+    assert.ok(translations.pinSavedVerificationSent);
+    assert.ok(translations.pinSavedVerificationFailed);
   }
 });
 
