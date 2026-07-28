@@ -40,7 +40,7 @@ final class Database implements StorageInterface
             $parameters[$name] = $candidate;
         }
         $statement = $this->pdo->prepare(
-            'SELECT p.*, u.color_index AS author_color_index,
+            'SELECT p.*, u.color_index AS author_color_index, u.role_key AS author_role_key,
                     (SELECT m.message FROM messages m WHERE m.pin_id = p.id AND m.deleted_at IS NULL ORDER BY m.created_at ASC LIMIT 1) AS first_message
              FROM pins p
              LEFT JOIN project_users u ON u.project_key = p.project_key AND u.author_id = p.author_id
@@ -54,7 +54,8 @@ final class Database implements StorageInterface
     public function listProjectPins(string $projectKey): array
     {
         $statement = $this->pdo->prepare(
-            'SELECT p.id, p.page_key, p.page_url, p.pin_number, p.status, p.author_name, u.color_index AS author_color_index, p.created_at, p.updated_at, p.viewport_json,
+            'SELECT p.id, p.page_key, p.page_url, p.pin_number, p.status, p.author_name, p.audience_role,
+                    u.color_index AS author_color_index, u.role_key AS author_role_key, p.created_at, p.updated_at, p.viewport_json,
                     (SELECT m.message FROM messages m WHERE m.pin_id = p.id AND m.deleted_at IS NULL ORDER BY m.created_at ASC LIMIT 1) AS first_message,
                     (SELECT COUNT(*) FROM messages m WHERE m.pin_id = p.id AND m.deleted_at IS NULL) AS message_count,
                     (SELECT MAX(m.created_at) FROM messages m WHERE m.pin_id = p.id AND m.deleted_at IS NULL) AS last_message_at
@@ -67,6 +68,8 @@ final class Database implements StorageInterface
         return array_map(static function (array $row): array {
             $row['pin_number'] = (int) $row['pin_number'];
             $row['author_color_index'] = isset($row['author_color_index']) ? (int) $row['author_color_index'] : 1;
+            $row['author_role_key'] = (string) ($row['author_role_key'] ?? 'unassigned');
+            $row['audience_role'] = (string) ($row['audience_role'] ?? 'all');
             $row['message_count'] = (int) ($row['message_count'] ?? 0);
             $row['last_message_at'] = (string) ($row['last_message_at'] ?? '');
             $viewport = json_decode((string) $row['viewport_json'], true, 64, JSON_THROW_ON_ERROR);
@@ -79,7 +82,7 @@ final class Database implements StorageInterface
     public function listProjectUsers(string $projectKey): array
     {
         $statement = $this->pdo->prepare(
-            'SELECT author_name, color_index, created_at, updated_at
+            'SELECT author_name, color_index, role_key, created_at, updated_at
              FROM project_users
              WHERE project_key = :project_key
              ORDER BY sequence_number ASC'
@@ -94,7 +97,7 @@ final class Database implements StorageInterface
     public function listProjectUserRecords(string $projectKey): array
     {
         $statement = $this->pdo->prepare(
-            'SELECT author_id, author_name, color_index, sequence_number, created_at, updated_at
+            'SELECT author_id, author_name, color_index, role_key, sequence_number, created_at, updated_at
              FROM project_users
              WHERE project_key = :project_key
              ORDER BY sequence_number ASC'
@@ -115,7 +118,7 @@ final class Database implements StorageInterface
         $this->pdo->beginTransaction();
         try {
             $select = $this->pdo->prepare(
-                'SELECT author_name, color_index FROM project_users
+                'SELECT author_name, color_index, role_key FROM project_users
                  WHERE project_key = :project_key AND author_id = :author_id LIMIT 1'
             );
             $select->execute(['project_key' => $projectKey, 'author_id' => $canonicalAuthorId]);
@@ -125,6 +128,20 @@ final class Database implements StorageInterface
             if (!is_array($canonical) || !is_array($source)) {
                 $this->pdo->rollBack();
                 return false;
+            }
+
+            if ((string) ($canonical['role_key'] ?? 'unassigned') === 'unassigned'
+                && (string) ($source['role_key'] ?? 'unassigned') !== 'unassigned') {
+                $updateRole = $this->pdo->prepare(
+                    'UPDATE project_users SET role_key = :role_key, updated_at = :updated_at
+                     WHERE project_key = :project_key AND author_id = :author_id'
+                );
+                $updateRole->execute([
+                    'role_key' => Validation::roleKey((string) $source['role_key']),
+                    'updated_at' => gmdate('c'),
+                    'project_key' => $projectKey,
+                    'author_id' => $canonicalAuthorId,
+                ]);
             }
 
             $parameters = [
@@ -168,10 +185,40 @@ final class Database implements StorageInterface
         }
     }
 
+    public function updateProjectUserRole(string $projectKey, string $authorId, string $roleKey, string $updatedAt): bool
+    {
+        $statement = $this->pdo->prepare(
+            'UPDATE project_users SET role_key = :role_key, updated_at = :updated_at
+             WHERE project_key = :project_key AND author_id = :author_id'
+        );
+        $statement->execute([
+            'role_key' => Validation::roleKey($roleKey),
+            'updated_at' => $updatedAt,
+            'project_key' => $projectKey,
+            'author_id' => $authorId,
+        ]);
+        return $statement->rowCount() > 0;
+    }
+
+    public function updatePinAudience(string $id, string $projectKey, string $audienceRole, string $updatedAt): bool
+    {
+        $statement = $this->pdo->prepare(
+            'UPDATE pins SET audience_role = :audience_role, updated_at = :updated_at
+             WHERE id = :id AND project_key = :project_key AND deleted_at IS NULL'
+        );
+        $statement->execute([
+            'audience_role' => Validation::audienceRole($audienceRole),
+            'updated_at' => $updatedAt,
+            'id' => $id,
+            'project_key' => $projectKey,
+        ]);
+        return $statement->rowCount() > 0;
+    }
+
     public function getPin(string $id, string $projectKey): ?array
     {
         $statement = $this->pdo->prepare(
-            'SELECT p.*, u.color_index AS author_color_index
+            'SELECT p.*, u.color_index AS author_color_index, u.role_key AS author_role_key
              FROM pins p
              LEFT JOIN project_users u ON u.project_key = p.project_key AND u.author_id = p.author_id
              WHERE p.id = :id AND p.project_key = :project_key AND p.deleted_at IS NULL
@@ -184,7 +231,7 @@ final class Database implements StorageInterface
         }
         $pin = $this->hydratePin($row);
         $messages = $this->pdo->prepare(
-            'SELECT m.*, u.color_index AS author_color_index
+            'SELECT m.*, u.color_index AS author_color_index, u.role_key AS author_role_key
              FROM messages m
              LEFT JOIN project_users u ON u.project_key = :project_key AND u.author_id = m.author_id
              WHERE m.pin_id = :pin_id AND m.deleted_at IS NULL
@@ -193,6 +240,7 @@ final class Database implements StorageInterface
         $messages->execute(['pin_id' => $id, 'project_key' => $projectKey]);
         $pin['messages'] = array_map(static function (array $message): array {
             $message['author_color_index'] = isset($message['author_color_index']) ? (int) $message['author_color_index'] : 1;
+            $message['author_role_key'] = (string) ($message['author_role_key'] ?? 'unassigned');
             return $message;
         }, $messages->fetchAll());
         return $pin;
@@ -219,7 +267,9 @@ final class Database implements StorageInterface
                 (string) $pin['project_key'],
                 (string) $pin['author_id'],
                 (string) $pin['author_name'],
-                (string) $pin['created_at']
+                (string) $pin['created_at'],
+                null,
+                Validation::roleKey((string) ($pin['author_role_key'] ?? 'unassigned'))
             );
             $counter = $this->pdo->prepare('INSERT OR IGNORE INTO project_counters (project_key, next_number) VALUES (:project_key, 1)');
             $counter->execute(['project_key' => $pin['project_key']]);
@@ -233,11 +283,11 @@ final class Database implements StorageInterface
             $insertPin = $this->pdo->prepare(
                 'INSERT INTO pins (
                     id, project_key, page_key, page_url, pin_number, status, author_id, author_name,
-                    target_selector, target_fingerprint_json, anchor_json, viewport_json, browser_json,
+                    audience_role, target_selector, target_fingerprint_json, anchor_json, viewport_json, browser_json,
                     created_at, updated_at, deleted_at
                  ) VALUES (
                     :id, :project_key, :page_key, :page_url, :pin_number, :status, :author_id, :author_name,
-                    :target_selector, :target_fingerprint_json, :anchor_json, :viewport_json, :browser_json,
+                    :audience_role, :target_selector, :target_fingerprint_json, :anchor_json, :viewport_json, :browser_json,
                     :created_at, :updated_at, NULL
                  )'
             );
@@ -246,6 +296,7 @@ final class Database implements StorageInterface
             $this->pdo->commit();
             $pin['first_message'] = $message['message'];
             $pin['author_color_index'] = $user['color_index'];
+            $pin['author_role_key'] = $user['role_key'];
             return $pin;
         } catch (Throwable $error) {
             if ($this->pdo->inTransaction()) {
@@ -269,7 +320,9 @@ final class Database implements StorageInterface
                 (string) $message['project_key'],
                 (string) $message['author_id'],
                 (string) $message['author_name'],
-                (string) $message['created_at']
+                (string) $message['created_at'],
+                null,
+                Validation::roleKey((string) ($message['author_role_key'] ?? 'unassigned'))
             );
             unset($message['project_key']);
             $this->insertMessage($message);
@@ -277,6 +330,7 @@ final class Database implements StorageInterface
             $updated->execute(['updated_at' => $message['created_at'], 'id' => $message['pin_id']]);
             $this->pdo->commit();
             $message['author_color_index'] = $user['color_index'];
+            $message['author_role_key'] = $user['role_key'];
             return $message;
         } catch (Throwable $error) {
             if ($this->pdo->inTransaction()) {
@@ -375,10 +429,10 @@ final class Database implements StorageInterface
     public function exportAll(): array
     {
         return [
-            'format_version' => 3,
+            'format_version' => 4,
             'exported_at' => gmdate('c'),
             'projects' => $this->pdo->query('SELECT project_key, next_number FROM project_counters ORDER BY project_key')->fetchAll(),
-            'users' => $this->pdo->query('SELECT project_key, author_id, author_name, color_index, sequence_number, created_at, updated_at FROM project_users ORDER BY project_key, sequence_number')->fetchAll(),
+            'users' => $this->pdo->query('SELECT project_key, author_id, author_name, color_index, role_key, sequence_number, created_at, updated_at FROM project_users ORDER BY project_key, sequence_number')->fetchAll(),
             'pins' => array_map(fn (array $row): array => $this->hydratePin($row), $this->pdo->query('SELECT * FROM pins ORDER BY project_key, pin_number')->fetchAll()),
             'messages' => $this->pdo->query('SELECT * FROM messages ORDER BY created_at, id')->fetchAll(),
             'status_events' => $this->pdo->query('SELECT id, pin_id, author_id, status, created_at FROM pin_status_events ORDER BY created_at, id')->fetchAll(),
@@ -403,8 +457,8 @@ final class Database implements StorageInterface
             }
             $backupUsers = isset($backup['users']) && is_array($backup['users']) ? $backup['users'] : [];
             $insertUser = $this->pdo->prepare(
-                'INSERT INTO project_users (project_key, author_id, author_name, color_index, sequence_number, created_at, updated_at)
-                 VALUES (:project_key, :author_id, :author_name, :color_index, :sequence_number, :created_at, :updated_at)'
+                'INSERT INTO project_users (project_key, author_id, author_name, color_index, role_key, sequence_number, created_at, updated_at)
+                 VALUES (:project_key, :author_id, :author_name, :color_index, :role_key, :sequence_number, :created_at, :updated_at)'
             );
             foreach ($backupUsers as $user) {
                 if (!is_array($user)) throw new \InvalidArgumentException('Backup user is invalid.');
@@ -418,14 +472,15 @@ final class Database implements StorageInterface
                     'author_id' => Validation::uuid($user['author_id'] ?? null, 'author_id'),
                     'author_name' => Validation::string($user['author_name'] ?? null, 'author_name', 1, 80),
                     'color_index' => $colorIndex,
+                    'role_key' => Validation::roleKey((string) ($user['role_key'] ?? 'unassigned')),
                     'sequence_number' => $sequenceNumber,
                     'created_at' => (string) ($user['created_at'] ?? ''),
                     'updated_at' => (string) ($user['updated_at'] ?? ''),
                 ]);
             }
             $insertPin = $this->pdo->prepare(
-                'INSERT INTO pins (id, project_key, page_key, page_url, pin_number, status, author_id, author_name, target_selector, target_fingerprint_json, anchor_json, viewport_json, browser_json, created_at, updated_at, deleted_at)
-                 VALUES (:id, :project_key, :page_key, :page_url, :pin_number, :status, :author_id, :author_name, :target_selector, :target_fingerprint_json, :anchor_json, :viewport_json, :browser_json, :created_at, :updated_at, :deleted_at)'
+                'INSERT INTO pins (id, project_key, page_key, page_url, pin_number, status, author_id, author_name, audience_role, target_selector, target_fingerprint_json, anchor_json, viewport_json, browser_json, created_at, updated_at, deleted_at)
+                 VALUES (:id, :project_key, :page_key, :page_url, :pin_number, :status, :author_id, :author_name, :audience_role, :target_selector, :target_fingerprint_json, :anchor_json, :viewport_json, :browser_json, :created_at, :updated_at, :deleted_at)'
             );
             foreach ($backup['pins'] as $pin) {
                 if (!is_array($pin)) throw new \InvalidArgumentException('Backup pin is invalid.');
@@ -551,6 +606,7 @@ final class Database implements StorageInterface
                 status TEXT NOT NULL CHECK (status IN (\'open\', \'resolved\')),
                 author_id TEXT NOT NULL,
                 author_name TEXT NOT NULL,
+                audience_role TEXT NOT NULL DEFAULT \'all\',
                 target_selector TEXT NOT NULL,
                 target_fingerprint_json TEXT NOT NULL,
                 anchor_json TEXT NOT NULL,
@@ -592,6 +648,7 @@ final class Database implements StorageInterface
                 author_id TEXT NOT NULL,
                 author_name TEXT NOT NULL,
                 color_index INTEGER NOT NULL CHECK (color_index BETWEEN 1 AND 10),
+                role_key TEXT NOT NULL DEFAULT \'unassigned\',
                 sequence_number INTEGER NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
@@ -610,43 +667,68 @@ final class Database implements StorageInterface
                 created_at TEXT NOT NULL
             );'
         );
+        $this->ensureColumn('pins', 'audience_role', "TEXT NOT NULL DEFAULT 'all'");
+        $this->ensureColumn('project_users', 'role_key', "TEXT NOT NULL DEFAULT 'unassigned'");
         $this->backfillProjectUsers();
     }
 
-    /** @return array{color_index:int,sequence_number:int} */
+    private function ensureColumn(string $table, string $column, string $definition): void
+    {
+        if (!in_array($table, ['pins', 'project_users'], true)
+            || !in_array($column, ['audience_role', 'role_key'], true)) {
+            throw new \InvalidArgumentException('Schema migration target is invalid.');
+        }
+        foreach ($this->pdo->query('PRAGMA table_info(' . $table . ')')->fetchAll() as $field) {
+            if ((string) ($field['name'] ?? '') === $column) {
+                return;
+            }
+        }
+        $this->pdo->exec('ALTER TABLE ' . $table . ' ADD COLUMN ' . $column . ' ' . $definition);
+    }
+
+    /** @return array{color_index:int,role_key:string,sequence_number:int} */
     private function ensureProjectUser(
         string $projectKey,
         string $authorId,
         string $authorName,
         string $createdAt,
-        ?string $updatedAt = null
+        ?string $updatedAt = null,
+        ?string $roleKey = null
     ): array {
         $updatedAt ??= $createdAt;
         $select = $this->pdo->prepare(
-            'SELECT author_name, color_index, sequence_number FROM project_users
+            'SELECT author_name, color_index, role_key, sequence_number FROM project_users
              WHERE project_key = :project_key AND author_id = :author_id LIMIT 1'
         );
         $parameters = ['project_key' => $projectKey, 'author_id' => $authorId];
         $select->execute($parameters);
         $existing = $select->fetch();
         if (is_array($existing)) {
-            if ((string) $existing['author_name'] !== $authorName) {
+            $roleKey = $roleKey === null
+                ? (string) ($existing['role_key'] ?? 'unassigned')
+                : Validation::roleKey($roleKey);
+            if ($roleKey === 'unassigned' && (string) ($existing['role_key'] ?? 'unassigned') !== 'unassigned') {
+                $roleKey = (string) $existing['role_key'];
+            }
+            if ((string) $existing['author_name'] !== $authorName
+                || (string) ($existing['role_key'] ?? 'unassigned') !== $roleKey) {
                 $update = $this->pdo->prepare(
-                    'UPDATE project_users SET author_name = :author_name, updated_at = :updated_at
+                    'UPDATE project_users SET author_name = :author_name, role_key = :role_key, updated_at = :updated_at
                      WHERE project_key = :project_key AND author_id = :author_id'
                 );
-                $update->execute($parameters + ['author_name' => $authorName, 'updated_at' => $updatedAt]);
+                $update->execute($parameters + ['author_name' => $authorName, 'role_key' => $roleKey, 'updated_at' => $updatedAt]);
             }
             return [
                 'color_index' => (int) $existing['color_index'],
+                'role_key' => $roleKey,
                 'sequence_number' => (int) $existing['sequence_number'],
             ];
         }
 
         $nextSequence = $this->pdo->prepare('SELECT COALESCE(MAX(sequence_number), 0) + 1 FROM project_users WHERE project_key = :project_key');
         $insert = $this->pdo->prepare(
-            'INSERT OR IGNORE INTO project_users (project_key, author_id, author_name, color_index, sequence_number, created_at, updated_at)
-             VALUES (:project_key, :author_id, :author_name, :color_index, :sequence_number, :created_at, :updated_at)'
+            'INSERT OR IGNORE INTO project_users (project_key, author_id, author_name, color_index, role_key, sequence_number, created_at, updated_at)
+             VALUES (:project_key, :author_id, :author_name, :color_index, :role_key, :sequence_number, :created_at, :updated_at)'
         );
         for ($attempt = 0; $attempt < 5; $attempt++) {
             $nextSequence->execute(['project_key' => $projectKey]);
@@ -657,6 +739,7 @@ final class Database implements StorageInterface
                 'author_id' => $authorId,
                 'author_name' => $authorName,
                 'color_index' => $colorIndex,
+                'role_key' => Validation::roleKey($roleKey ?? 'unassigned'),
                 'sequence_number' => $sequenceNumber,
                 'created_at' => $createdAt,
                 'updated_at' => $updatedAt,
@@ -666,6 +749,7 @@ final class Database implements StorageInterface
             if (is_array($created)) {
                 return [
                     'color_index' => (int) $created['color_index'],
+                    'role_key' => (string) ($created['role_key'] ?? 'unassigned'),
                     'sequence_number' => (int) $created['sequence_number'],
                 ];
             }
@@ -774,6 +858,7 @@ final class Database implements StorageInterface
             'status' => $pin['status'],
             'author_id' => $pin['author_id'],
             'author_name' => $pin['author_name'],
+            'audience_role' => Validation::audienceRole((string) ($pin['audience_role'] ?? 'all')),
             'target_selector' => $pin['target_selector'],
             'target_fingerprint_json' => json_encode($pin['target_fingerprint'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
             'anchor_json' => json_encode($pin['anchor'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
@@ -789,6 +874,8 @@ final class Database implements StorageInterface
     {
         $row['pin_number'] = (int) $row['pin_number'];
         $row['author_color_index'] = isset($row['author_color_index']) ? (int) $row['author_color_index'] : 1;
+        $row['author_role_key'] = (string) ($row['author_role_key'] ?? 'unassigned');
+        $row['audience_role'] = (string) ($row['audience_role'] ?? 'all');
         $row['target_fingerprint'] = json_decode((string) $row['target_fingerprint_json'], true, 64, JSON_THROW_ON_ERROR);
         $row['anchor'] = json_decode((string) $row['anchor_json'], true, 64, JSON_THROW_ON_ERROR);
         $row['viewport'] = json_decode((string) $row['viewport_json'], true, 64, JSON_THROW_ON_ERROR);

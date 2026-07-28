@@ -92,6 +92,14 @@ export class ApiClient {
     return this.request('notification-settings', { method: 'POST', body, signal });
   }
 
+  getUserProfile(body, signal) {
+    return this.request('get-user-profile', { method: 'POST', body, signal });
+  }
+
+  updateUserRole(body, signal) {
+    return this.request('update-user-role', { method: 'PATCH', body, signal });
+  }
+
   requestEmailVerification(body, signal) {
     return this.request('request-email-verification', { method: 'POST', body, signal });
   }
@@ -108,6 +116,10 @@ export class ApiClient {
     return this.request('send-notification', { method: 'POST', body, signal });
   }
 
+  sendRoleNotification(body, signal) {
+    return this.request('send-role-notification', { method: 'POST', body, signal });
+  }
+
   getPin(id, projectKey, signal) {
     return this.request('get-pin', { params: { id, project_key: projectKey }, signal });
   }
@@ -122,6 +134,10 @@ export class ApiClient {
 
   updateStatus(id, body, signal) {
     return this.request('update-status', { method: 'PATCH', params: { id }, body, signal });
+  }
+
+  updatePinAudience(id, body, signal) {
+    return this.request('update-pin-audience', { method: 'PATCH', params: { id }, body, signal });
   }
 
   deletePin(id, body, signal) {

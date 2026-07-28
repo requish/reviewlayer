@@ -22,6 +22,10 @@ interface StorageInterface
 
     public function mergeProjectAuthors(string $projectKey, string $canonicalAuthorId, string $sourceAuthorId): bool;
 
+    public function updateProjectUserRole(string $projectKey, string $authorId, string $roleKey, string $updatedAt): bool;
+
+    public function updatePinAudience(string $id, string $projectKey, string $audienceRole, string $updatedAt): bool;
+
     /** @return array<string, mixed>|null */
     public function getPin(string $id, string $projectKey): ?array;
 

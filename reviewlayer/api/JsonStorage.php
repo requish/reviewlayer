@@ -31,6 +31,7 @@ final class JsonStorage implements StorageInterface
             ));
             foreach ($pins as &$pin) {
                 $pin['author_color_index'] = $this->projectUserColor($data, $projectKey, (string) $pin['author_id']);
+                $pin['author_role_key'] = $this->projectUserRole($data, $projectKey, (string) $pin['author_id']);
                 $first = array_values(array_filter($messages, static fn (array $message): bool =>
                     $message['pin_id'] === $pin['id'] && $message['deleted_at'] === null
                 ));
@@ -55,6 +56,7 @@ final class JsonStorage implements StorageInterface
             ));
             foreach ($pins as &$pin) {
                 $pin['author_color_index'] = $this->projectUserColor($data, $projectKey, (string) $pin['author_id']);
+                $pin['author_role_key'] = $this->projectUserRole($data, $projectKey, (string) $pin['author_id']);
                 $first = array_values(array_filter($messages, static fn (array $message): bool =>
                     $message['pin_id'] === $pin['id'] && $message['deleted_at'] === null
                 ));
@@ -73,6 +75,8 @@ final class JsonStorage implements StorageInterface
                 'status' => $pin['status'],
                 'author_name' => $pin['author_name'],
                 'author_color_index' => (int) $pin['author_color_index'],
+                'author_role_key' => (string) ($pin['author_role_key'] ?? 'unassigned'),
+                'audience_role' => (string) ($pin['audience_role'] ?? 'all'),
                 'created_at' => $pin['created_at'],
                 'updated_at' => $pin['updated_at'],
                 'first_message' => $pin['first_message'],
@@ -97,6 +101,7 @@ final class JsonStorage implements StorageInterface
             return array_map(static fn (array $user): array => [
                 'author_name' => (string) $user['author_name'],
                 'color_index' => (int) $user['color_index'],
+                'role_key' => (string) ($user['role_key'] ?? 'unassigned'),
                 'created_at' => (string) $user['created_at'],
                 'updated_at' => (string) $user['updated_at'],
             ], $users);
@@ -116,6 +121,7 @@ final class JsonStorage implements StorageInterface
                 'author_id' => (string) $user['author_id'],
                 'author_name' => (string) $user['author_name'],
                 'color_index' => (int) $user['color_index'],
+                'role_key' => (string) ($user['role_key'] ?? 'unassigned'),
                 'sequence_number' => (int) $user['sequence_number'],
                 'created_at' => (string) $user['created_at'],
                 'updated_at' => (string) $user['updated_at'],
@@ -130,14 +136,26 @@ final class JsonStorage implements StorageInterface
         }
         return $this->mutate(function (array &$data) use ($projectKey, $canonicalAuthorId, $sourceAuthorId): bool {
             $canonical = null;
-            $sourceFound = false;
+            $source = null;
             foreach ($data['users'] as $user) {
                 if ($user['project_key'] !== $projectKey) continue;
                 if ($user['author_id'] === $canonicalAuthorId) $canonical = $user;
-                if ($user['author_id'] === $sourceAuthorId) $sourceFound = true;
+                if ($user['author_id'] === $sourceAuthorId) $source = $user;
             }
-            if (!is_array($canonical) || !$sourceFound) {
+            if (!is_array($canonical) || !is_array($source)) {
                 return false;
+            }
+
+            if ((string) ($canonical['role_key'] ?? 'unassigned') === 'unassigned'
+                && (string) ($source['role_key'] ?? 'unassigned') !== 'unassigned') {
+                foreach ($data['users'] as &$user) {
+                    if ($user['project_key'] === $projectKey && $user['author_id'] === $canonicalAuthorId) {
+                        $user['role_key'] = Validation::roleKey((string) $source['role_key']);
+                        $user['updated_at'] = gmdate('c');
+                        break;
+                    }
+                }
+                unset($user);
             }
 
             $projectPins = [];
@@ -170,6 +188,36 @@ final class JsonStorage implements StorageInterface
         });
     }
 
+    public function updateProjectUserRole(string $projectKey, string $authorId, string $roleKey, string $updatedAt): bool
+    {
+        return $this->mutate(function (array &$data) use ($projectKey, $authorId, $roleKey, $updatedAt): bool {
+            foreach ($data['users'] as &$user) {
+                if ($user['project_key'] !== $projectKey || $user['author_id'] !== $authorId) continue;
+                $user['role_key'] = Validation::roleKey($roleKey);
+                $user['updated_at'] = $updatedAt;
+                unset($user);
+                return true;
+            }
+            unset($user);
+            return false;
+        });
+    }
+
+    public function updatePinAudience(string $id, string $projectKey, string $audienceRole, string $updatedAt): bool
+    {
+        return $this->mutate(function (array &$data) use ($id, $projectKey, $audienceRole, $updatedAt): bool {
+            foreach ($data['pins'] as &$pin) {
+                if ($pin['id'] !== $id || $pin['project_key'] !== $projectKey || $pin['deleted_at'] !== null) continue;
+                $pin['audience_role'] = Validation::audienceRole($audienceRole);
+                $pin['updated_at'] = $updatedAt;
+                unset($pin);
+                return true;
+            }
+            unset($pin);
+            return false;
+        });
+    }
+
     public function getPin(string $id, string $projectKey): ?array
     {
         return $this->read(function (array $data) use ($id, $projectKey): ?array {
@@ -178,11 +226,13 @@ final class JsonStorage implements StorageInterface
                     continue;
                 }
                 $pin['author_color_index'] = $this->projectUserColor($data, $projectKey, (string) $pin['author_id']);
+                $pin['author_role_key'] = $this->projectUserRole($data, $projectKey, (string) $pin['author_id']);
                 $pin['messages'] = array_values(array_filter($data['messages'], static fn (array $message): bool =>
                     $message['pin_id'] === $id && $message['deleted_at'] === null
                 ));
                 foreach ($pin['messages'] as &$message) {
                     $message['author_color_index'] = $this->projectUserColor($data, $projectKey, (string) $message['author_id']);
+                    $message['author_role_key'] = $this->projectUserRole($data, $projectKey, (string) $message['author_id']);
                 }
                 unset($message);
                 usort($pin['messages'], static fn (array $a, array $b): int => [$a['created_at'], $a['id']] <=> [$b['created_at'], $b['id']]);
@@ -217,7 +267,9 @@ final class JsonStorage implements StorageInterface
                 (string) $pin['project_key'],
                 (string) $pin['author_id'],
                 (string) $pin['author_name'],
-                (string) $pin['created_at']
+                (string) $pin['created_at'],
+                null,
+                Validation::roleKey((string) ($pin['author_role_key'] ?? 'unassigned'))
             );
             $next = (int) ($data['counters'][$pin['project_key']] ?? 1);
             $pin['pin_number'] = $next;
@@ -228,6 +280,7 @@ final class JsonStorage implements StorageInterface
             $data['messages'][] = $message;
             $pin['first_message'] = $message['message'];
             $pin['author_color_index'] = $user['color_index'];
+            $pin['author_role_key'] = $user['role_key'];
             return $pin;
         });
     }
@@ -252,11 +305,14 @@ final class JsonStorage implements StorageInterface
                 (string) $message['project_key'],
                 (string) $message['author_id'],
                 (string) $message['author_name'],
-                (string) $message['created_at']
+                (string) $message['created_at'],
+                null,
+                Validation::roleKey((string) ($message['author_role_key'] ?? 'unassigned'))
             );
             unset($message['project_key']);
             $message['deleted_at'] = null;
             $message['author_color_index'] = $user['color_index'];
+            $message['author_role_key'] = $user['role_key'];
             $data['messages'][] = $message;
             return $message;
         });
@@ -359,7 +415,7 @@ final class JsonStorage implements StorageInterface
                 $projects[] = ['project_key' => $projectKey, 'next_number' => $nextNumber];
             }
             return [
-                'format_version' => 3,
+                'format_version' => 4,
                 'exported_at' => gmdate('c'),
                 'projects' => $projects,
                 'users' => $data['users'],
@@ -418,16 +474,23 @@ final class JsonStorage implements StorageInterface
                     'author_id' => $authorId,
                     'author_name' => Validation::string($user['author_name'] ?? null, 'author_name', 1, 80),
                     'color_index' => $colorIndex,
+                    'role_key' => Validation::roleKey((string) ($user['role_key'] ?? 'unassigned')),
                     'sequence_number' => $sequenceNumber,
                     'created_at' => Validation::string($user['created_at'] ?? null, 'created_at', 1, 64),
                     'updated_at' => Validation::string($user['updated_at'] ?? null, 'updated_at', 1, 64),
                 ];
             }
+            $pins = array_values($backup['pins']);
+            foreach ($pins as &$pin) {
+                if (!is_array($pin)) throw new \InvalidArgumentException('Backup pin is invalid.');
+                $pin['audience_role'] = Validation::audienceRole((string) ($pin['audience_role'] ?? 'all'));
+            }
+            unset($pin);
             $data = [
-                'format_version' => 3,
+                'format_version' => 4,
                 'counters' => $counters,
                 'users' => $users,
-                'pins' => array_values($backup['pins']),
+                'pins' => $pins,
                 'messages' => array_values($backup['messages']),
                 'status_events' => $statusEvents,
             ];
@@ -553,7 +616,7 @@ final class JsonStorage implements StorageInterface
     private function readData(): array
     {
         if (!is_file($this->path)) {
-            return ['format_version' => 3, 'counters' => [], 'users' => [], 'pins' => [], 'messages' => [], 'status_events' => []];
+            return ['format_version' => 4, 'counters' => [], 'users' => [], 'pins' => [], 'messages' => [], 'status_events' => []];
         }
         $raw = file_get_contents($this->path);
         if ($raw === false) {
@@ -567,35 +630,52 @@ final class JsonStorage implements StorageInterface
         if (!is_array($data) || !isset($data['counters'], $data['pins'], $data['messages']) || !is_array($data['counters']) || !is_array($data['pins']) || !is_array($data['messages'])) {
             throw new RuntimeException('JSON storage has an invalid structure.');
         }
-        $data['format_version'] = 3;
+        $data['format_version'] = 4;
         $data['users'] = isset($data['users']) && is_array($data['users']) ? array_values($data['users']) : [];
         $data['status_events'] = isset($data['status_events']) && is_array($data['status_events']) ? array_values($data['status_events']) : [];
         if ($data['users'] === []) {
             $this->backfillProjectUsers($data);
         }
+        foreach ($data['users'] as &$user) {
+            $user['role_key'] = Validation::roleKey((string) ($user['role_key'] ?? 'unassigned'));
+        }
+        unset($user);
+        foreach ($data['pins'] as &$pin) {
+            $pin['audience_role'] = Validation::audienceRole((string) ($pin['audience_role'] ?? 'all'));
+        }
+        unset($pin);
         return $data;
     }
 
-    /** @param array<string, mixed> $data @return array{color_index:int,sequence_number:int} */
+    /** @param array<string, mixed> $data @return array{color_index:int,role_key:string,sequence_number:int} */
     private function ensureProjectUser(
         array &$data,
         string $projectKey,
         string $authorId,
         string $authorName,
         string $createdAt,
-        ?string $updatedAt = null
+        ?string $updatedAt = null,
+        ?string $roleKey = null
     ): array {
         $updatedAt ??= $createdAt;
         foreach ($data['users'] as &$user) {
             if ($user['project_key'] !== $projectKey || $user['author_id'] !== $authorId) {
                 continue;
             }
-            if ($user['author_name'] !== $authorName) {
+            $roleKey = $roleKey === null
+                ? (string) ($user['role_key'] ?? 'unassigned')
+                : Validation::roleKey($roleKey);
+            if ($roleKey === 'unassigned' && (string) ($user['role_key'] ?? 'unassigned') !== 'unassigned') {
+                $roleKey = (string) $user['role_key'];
+            }
+            if ($user['author_name'] !== $authorName || (string) ($user['role_key'] ?? 'unassigned') !== $roleKey) {
                 $user['author_name'] = $authorName;
+                $user['role_key'] = $roleKey;
                 $user['updated_at'] = $updatedAt;
             }
             $result = [
                 'color_index' => (int) $user['color_index'],
+                'role_key' => $roleKey,
                 'sequence_number' => (int) $user['sequence_number'],
             ];
             unset($user);
@@ -615,11 +695,16 @@ final class JsonStorage implements StorageInterface
             'author_id' => $authorId,
             'author_name' => $authorName,
             'color_index' => $colorIndex,
+            'role_key' => Validation::roleKey($roleKey ?? 'unassigned'),
             'sequence_number' => $sequenceNumber,
             'created_at' => $createdAt,
             'updated_at' => $updatedAt,
         ];
-        return ['color_index' => $colorIndex, 'sequence_number' => $sequenceNumber];
+        return [
+            'color_index' => $colorIndex,
+            'role_key' => Validation::roleKey($roleKey ?? 'unassigned'),
+            'sequence_number' => $sequenceNumber,
+        ];
     }
 
     /** @param array<string, mixed> $data */
@@ -631,6 +716,17 @@ final class JsonStorage implements StorageInterface
             }
         }
         return 1;
+    }
+
+    /** @param array<string, mixed> $data */
+    private function projectUserRole(array $data, string $projectKey, string $authorId): string
+    {
+        foreach ($data['users'] as $user) {
+            if ($user['project_key'] === $projectKey && $user['author_id'] === $authorId) {
+                return (string) ($user['role_key'] ?? 'unassigned');
+            }
+        }
+        return 'unassigned';
     }
 
     /** @param array<string, mixed> $data */

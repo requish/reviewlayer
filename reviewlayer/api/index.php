@@ -319,6 +319,38 @@ try {
         ReviewLayer\respond(true, ['settings' => $settings], null);
     }
 
+    if ($action === 'get-user-profile') {
+        ReviewLayer\requireMethod('POST');
+        $projectKey = Validation::projectKey($body['project_key'] ?? null);
+        $authorId = $notifications->resolveAuthorId(
+            $projectKey,
+            Validation::uuid($body['author_id'] ?? null, 'author_id')
+        );
+        $profile = null;
+        foreach ($storage->listProjectUserRecords($projectKey) as $user) {
+            if (!hash_equals((string) ($user['author_id'] ?? ''), $authorId)) continue;
+            $profile = [
+                'author_name' => (string) ($user['author_name'] ?? ''),
+                'color_index' => (int) ($user['color_index'] ?? 1),
+                'role_key' => (string) ($user['role_key'] ?? 'unassigned'),
+            ];
+            break;
+        }
+        ReviewLayer\respond(true, ['profile' => $profile, 'canonical_author_id' => $authorId], null);
+    }
+
+    if ($action === 'update-user-role') {
+        ReviewLayer\requireMethod('POST', 'PATCH');
+        $projectKey = Validation::projectKey($body['project_key'] ?? null);
+        $authorId = $notifications->resolveAuthorId(
+            $projectKey,
+            Validation::uuid($body['author_id'] ?? null, 'author_id')
+        );
+        $roleKey = Validation::roleKey($body['role_key'] ?? null);
+        $updated = $storage->updateProjectUserRole($projectKey, $authorId, $roleKey, gmdate('c'));
+        ReviewLayer\respond(true, ['updated' => $updated, 'role_key' => $roleKey], null);
+    }
+
     if ($action === 'request-email-verification') {
         ReviewLayer\requireMethod('POST');
         $settings = $notifications->requestVerification(
@@ -370,6 +402,20 @@ try {
         ReviewLayer\respond(true, ['sent' => true], null);
     }
 
+    if ($action === 'send-role-notification') {
+        ReviewLayer\requireMethod('POST');
+        $sent = $notifications->sendRole(
+            $storage,
+            Validation::projectKey($body['project_key'] ?? null),
+            Validation::uuid($body['author_id'] ?? null, 'author_id'),
+            Validation::browserSecret($body['author_secret'] ?? null),
+            Validation::oneOf($body['language'] ?? null, 'language', ['pl', 'en']),
+            Validation::audienceRole($body['audience_role'] ?? null),
+            Validation::pageUrl($body['page_url'] ?? null)
+        );
+        ReviewLayer\respond(true, ['sent' => $sent], null);
+    }
+
     if ($action === 'create-pin') {
         ReviewLayer\requireMethod('POST');
         $projectKey = Validation::projectKey($body['project_key'] ?? null);
@@ -399,6 +445,8 @@ try {
             'status' => 'open',
             'author_id' => $authorId,
             'author_name' => $authorName,
+            'author_role_key' => Validation::roleKey((string) ($body['role_key'] ?? 'unassigned')),
+            'audience_role' => Validation::audienceRole((string) ($body['audience_role'] ?? 'all')),
             'target_selector' => Validation::string($body['target_selector'] ?? null, 'target_selector', 1, 2048),
             'target_fingerprint' => $fingerprint,
             'anchor' => $anchor,
@@ -440,6 +488,7 @@ try {
             'project_key' => $projectKey,
             'author_id' => $identity['author_id'],
             'author_name' => $identity['author_name'],
+            'author_role_key' => Validation::roleKey((string) ($body['role_key'] ?? 'unassigned')),
             'message' => Validation::string($body['message'] ?? null, 'message', 1, (int) $config['MAX_MESSAGE_LENGTH']),
             'created_at' => $now,
             'updated_at' => $now,
@@ -467,6 +516,31 @@ try {
             ReviewLayer\respond(false, null, ['code' => 'NOT_FOUND', 'message' => 'Pin not found.'], 404);
         }
         ReviewLayer\respond(true, ['updated' => true], null);
+    }
+
+    if ($action === 'update-pin-audience') {
+        ReviewLayer\requireMethod('PATCH', 'POST');
+        $projectKey = Validation::projectKey($body['project_key'] ?? null);
+        $id = Validation::uuid($_GET['id'] ?? null);
+        $authorId = $notifications->resolveAuthorId(
+            $projectKey,
+            Validation::uuid($body['author_id'] ?? null, 'author_id')
+        );
+        $knownAuthor = false;
+        foreach ($storage->listProjectUserRecords($projectKey) as $user) {
+            if (hash_equals((string) ($user['author_id'] ?? ''), $authorId)) {
+                $knownAuthor = true;
+                break;
+            }
+        }
+        if (!$knownAuthor) {
+            throw new SecurityException('ACCESS_DENIED', 'Only a project commenter can change the pin audience.');
+        }
+        $audienceRole = Validation::audienceRole($body['audience_role'] ?? null);
+        if (!$storage->updatePinAudience($id, $projectKey, $audienceRole, gmdate('c'))) {
+            ReviewLayer\respond(false, null, ['code' => 'NOT_FOUND', 'message' => 'Pin not found.'], 404);
+        }
+        ReviewLayer\respond(true, ['updated' => true, 'audience_role' => $audienceRole], null);
     }
 
     if ($action === 'delete-pin') {

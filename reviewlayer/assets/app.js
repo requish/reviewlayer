@@ -11,9 +11,18 @@ import {
   removeReviewLayerParameters
 } from './page-key.js';
 
-const VERSION = '1.3.8';
+const VERSION = '1.4.0';
 const MATERIAL_ICON_FONT_FAMILY = 'ReviewLayer Material Symbols';
 const FILTERS = ['all', 'mobile', 'tablet', 'desktop'];
+const ROLE_KEYS = ['unassigned', 'editor', 'developer', 'designer', 'generalist'];
+const AUDIENCE_ROLES = ['all', 'editor', 'developer', 'designer'];
+const ROLE_ICONS = Object.freeze({
+  editor: 'edit_note',
+  developer: 'code',
+  designer: 'palette',
+  generalist: 'all_inclusive',
+  all: 'all_inclusive'
+});
 const DEVICE_ICONS = Object.freeze({
   mobile: 'smartphone',
   tablet: 'tablet',
@@ -155,8 +164,25 @@ function authorColorStyle(colorIndex) {
   return `--rl-author-color:${palette.open};--rl-author-resolved-color:${palette.resolved}`;
 }
 
-function authorBadge(authorName, colorIndex) {
-  return `<strong class="rl-author-badge" style="${authorColorStyle(colorIndex)}">${escapeHtml(authorName)}</strong>`;
+function normalizeRoleKey(value) {
+  const roleKey = String(value || '').toLowerCase();
+  return ROLE_KEYS.includes(roleKey) ? roleKey : 'unassigned';
+}
+
+function normalizeAudienceRole(value) {
+  const audienceRole = String(value || '').toLowerCase();
+  return AUDIENCE_ROLES.includes(audienceRole) ? audienceRole : 'all';
+}
+
+function roleIcon(roleKey) {
+  const icon = ROLE_ICONS[roleKey];
+  return icon ? materialIcon(icon) : '';
+}
+
+function authorBadge(authorName, colorIndex, roleKey = 'unassigned') {
+  const normalizedRole = normalizeRoleKey(roleKey);
+  const icon = roleIcon(normalizedRole);
+  return `<strong class="rl-author-badge${icon ? ' has-role' : ''}" style="${authorColorStyle(colorIndex)}">${icon}<span>${escapeHtml(authorName)}</span></strong>`;
 }
 
 function createUuid() {
@@ -266,6 +292,8 @@ class ReviewLayerApp {
     this.authorId = safeGet(localStorage, this.authorIdKey) || legacyAuthorId || createUuid();
     this.authorSecret = safeGet(localStorage, 'reviewlayer:author-secret') || createBrowserSecret();
     this.authorName = safeGet(localStorage, 'reviewlayer:author-name');
+    this.userRoleKeyStorage = `reviewlayer:${this.projectKey}:role-key`;
+    this.userRoleKey = normalizeRoleKey(safeGet(localStorage, this.userRoleKeyStorage, 'unassigned'));
     this.authorEstablishedKey = `reviewlayer:${this.projectKey}:author-established`;
     this.authorEstablished = safeGet(localStorage, this.authorEstablishedKey) === 'true';
     this.accessCode = safeGet(sessionStorage, `reviewlayer:${this.projectKey}:access-code`);
@@ -413,7 +441,9 @@ class ReviewLayerApp {
     if (!settings || typeof settings !== 'object') return;
     this.markAuthorEstablished();
     const canonicalAuthorId = String(settings.canonical_author_id || '');
+    let canonicalIdentityChanged = false;
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(canonicalAuthorId)) {
+      canonicalIdentityChanged = canonicalAuthorId !== this.authorId;
       this.authorId = canonicalAuthorId;
       safeSet(localStorage, this.authorIdKey, canonicalAuthorId);
     }
@@ -424,6 +454,7 @@ class ReviewLayerApp {
       const nameInput = this.panel?.querySelector('form[data-form="settings"] input[name="author_name"]');
       if (nameInput) nameInput.value = canonicalName;
     }
+    if (canonicalIdentityChanged) void this.syncUserProfile();
   }
 
   async refreshProjectPinsIndicator(force = false) {
@@ -468,6 +499,34 @@ class ReviewLayerApp {
     return `<span class="rl-device-badge is-${escapeHtml(variant)}" role="img" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">${materialIcon(DEVICE_ICONS[normalizedType])}</span>`;
   }
 
+  roleLabel(roleKey) {
+    return this.t(`role${normalizeRoleKey(roleKey).replace(/^./, (letter) => letter.toUpperCase())}`);
+  }
+
+  audienceLabel(audienceRole) {
+    return this.t(`audience${normalizeAudienceRole(audienceRole).replace(/^./, (letter) => letter.toUpperCase())}`);
+  }
+
+  roleOptions(selectedRole = this.userRoleKey) {
+    const selected = normalizeRoleKey(selectedRole);
+    return ROLE_KEYS.map((roleKey) =>
+      `<option value="${roleKey}"${roleKey === selected ? ' selected' : ''}>${escapeHtml(this.roleLabel(roleKey))}</option>`
+    ).join('');
+  }
+
+  audienceOptions(selectedRole = 'all') {
+    const selected = normalizeAudienceRole(selectedRole);
+    return AUDIENCE_ROLES.map((roleKey) =>
+      `<option value="${roleKey}"${roleKey === selected ? ' selected' : ''}>${escapeHtml(this.audienceLabel(roleKey))}</option>`
+    ).join('');
+  }
+
+  roleLegendMarkup() {
+    return ['editor', 'developer', 'designer', 'generalist'].map((roleKey) =>
+      `<li><span class="rl-role-legend-icon">${roleIcon(roleKey)}</span><span><strong>${escapeHtml(this.roleLabel(roleKey))}</strong><small>${escapeHtml(this.t(`role${roleKey.replace(/^./, (letter) => letter.toUpperCase())}Hint`))}</small></span></li>`
+    ).join('');
+  }
+
   filterIcon(filter) {
     const deviceTypes = filter === 'all' ? FILTERS.slice(1) : [filter];
     return `<span class="rl-filter-icons${filter === 'all' ? ' is-all' : ''}" aria-hidden="true">${deviceTypes.map((deviceType) => materialIcon(DEVICE_ICONS[deviceType])).join('')}</span>`;
@@ -481,11 +540,37 @@ class ReviewLayerApp {
     try {
       this.bootstrapData = await this.api.bootstrap();
       this.updateNotificationsButton();
+      await this.syncUserProfile();
       await this.navigate(true);
       void this.refreshProjectPinsIndicator(true);
     } catch (error) {
       this.handleError(error);
       if (hasClearParameter()) this.openAdminPanel();
+    }
+  }
+
+  async syncUserProfile() {
+    try {
+      const data = await this.api.getUserProfile({
+        project_key: this.projectKey,
+        author_id: this.authorId
+      });
+      const canonicalAuthorId = String(data.canonical_author_id || '');
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(canonicalAuthorId)) {
+        this.authorId = canonicalAuthorId;
+        safeSet(localStorage, this.authorIdKey, canonicalAuthorId);
+      }
+      const profile = data.profile;
+      if (!profile) return;
+      this.userRoleKey = normalizeRoleKey(profile.role_key);
+      safeSet(localStorage, this.userRoleKeyStorage, this.userRoleKey);
+      const canonicalName = String(profile.author_name || '').trim();
+      if (canonicalName) {
+        this.authorName = canonicalName;
+        safeSet(localStorage, 'reviewlayer:author-name', canonicalName);
+      }
+    } catch (error) {
+      console.warn('[ReviewLayer] Unable to synchronize commenter role.', error?.code || error);
     }
   }
 
@@ -767,6 +852,7 @@ class ReviewLayerApp {
       else if (action === 'project-pins') this.openProjectPins();
       else if (action === 'notifications') this.openNotifications();
       else if (action === 'notify-user') this.notifyUser(actionElement);
+      else if (action === 'notify-role') this.notifyRole(actionElement);
       else if (action === 'remove-notification-email') this.removeNotificationEmail(actionElement);
       else if (action === 'open-project-pin') this.navigateToProjectPin(actionElement.dataset.pinId);
       else if (action === 'mark-project-pin-read') this.markProjectPinRead(actionElement.dataset.pinId, true);
@@ -795,11 +881,19 @@ class ReviewLayerApp {
       return;
     }
 
-    const pinButton = event.target.closest('[data-pin-id], [data-pin-mention-id]');
+    const pinButton = event.target.closest('.rl-pin[data-pin-id], .rl-pin-mention[data-pin-mention-id]');
     if (pinButton) this.openConversation(pinButton.dataset.pinId || pinButton.dataset.pinMentionId);
   }
 
-  handleChange(event) {
+  async handleChange(event) {
+    if (event.target.matches('[data-pin-audience]')) {
+      await this.updatePinAudience(event.target);
+      return;
+    }
+    if (event.target.matches('select[name="role_key"]')) {
+      this.updateRolePreview(event.target.value);
+      return;
+    }
     if (event.target.matches('[data-clear-scope]')) {
       const mode = this.panel.querySelector('[data-clear-mode]');
       const allProjects = event.target.value === 'all_projects';
@@ -958,6 +1052,7 @@ class ReviewLayerApp {
       <form data-form="create-pin" class="rl-form">
         <label>${escapeHtml(this.t('yourName'))}<input name="author_name" maxlength="80" required autocomplete="name" value="${escapeHtml(this.authorName)}"></label>
         ${emailField}
+        <label>${escapeHtml(this.t('workIntendedFor'))}<select name="audience_role">${this.audienceOptions()}</select><small>${escapeHtml(this.t('workIntendedForHint'))}</small></label>
         <label>${escapeHtml(this.t('firstComment'))}<textarea name="message" maxlength="5000" required rows="6" placeholder="${escapeHtml(this.t('commentPlaceholder'))}"></textarea></label>
         <div class="rl-form-actions"><button class="rl-button rl-button-muted" type="button" data-action="close-panel">${escapeHtml(this.t('cancel'))}</button><button class="rl-button rl-button-primary" type="submit" data-role="create-pin-submit">${escapeHtml(this.t('save'))}</button></div>
       </form>`);
@@ -974,6 +1069,7 @@ class ReviewLayerApp {
     const formData = new FormData(form);
     const authorName = String(formData.get('author_name') || '').trim();
     const notificationEmail = String(formData.get('notification_email') || '').trim();
+    const audienceRole = normalizeAudienceRole(formData.get('audience_role'));
     const message = String(formData.get('message') || '').trim();
     if (!authorName) return this.showToast(this.t('nameRequired'), true);
     if (!message) return this.showToast(this.t('commentRequired'), true);
@@ -990,6 +1086,8 @@ class ReviewLayerApp {
         page_url: this.currentPageUrl,
         author_id: this.authorId,
         author_name: authorName,
+        role_key: this.userRoleKey,
+        audience_role: audienceRole,
         message,
         target_selector: this.tempAnchor.target_selector,
         target_fingerprint: this.tempAnchor.target_fingerprint,
@@ -1095,7 +1193,7 @@ class ReviewLayerApp {
     const browser = pin.browser || {};
     const messages = (pin.messages || []).map((message) => `
       <article class="rl-message">
-        <div class="rl-message-head">${authorBadge(message.author_name, message.author_color_index)}<time datetime="${escapeHtml(message.created_at)}">${escapeHtml(this.formatDate(message.created_at))}</time></div>
+        <div class="rl-message-head">${authorBadge(message.author_name, message.author_color_index, message.author_role_key)}<time datetime="${escapeHtml(message.created_at)}">${escapeHtml(this.formatDate(message.created_at))}</time></div>
         <p>${escapeHtml(message.message)}</p>
         <button class="rl-text-button rl-danger-text" type="button" data-action="delete-message" data-message-id="${escapeHtml(message.id)}">${escapeHtml(this.t('deleteMessage'))}</button>
       </article>`).join('');
@@ -1112,21 +1210,26 @@ class ReviewLayerApp {
     const replyEmailField = this.bootstrapData?.notifications_available === true && !this.authorEstablished
       ? `<label>${escapeHtml(this.t('firstPinEmailLabel'))}<input name="notification_email" type="email" maxlength="254" autocomplete="email" inputmode="email" placeholder="name@example.com"><small>${escapeHtml(this.t('firstPinEmailHint'))}</small></label>`
       : '';
+    const replyForm = pin.status === 'resolved'
+      ? ''
+      : `<form data-form="reply" class="rl-form rl-reply-form">
+          ${this.authorName ? '' : `<label>${escapeHtml(this.t('yourName'))}<input name="author_name" maxlength="80" required autocomplete="name"></label>`}
+          ${replyEmailField}
+          <label>${escapeHtml(this.t('reply'))}<textarea name="message" maxlength="5000" required rows="3" placeholder="${escapeHtml(this.t('replyPlaceholder'))}"></textarea></label>
+          <button class="rl-button rl-button-primary" type="submit" data-role="reply-submit">${escapeHtml(this.t('send'))}</button>
+        </form>`;
     this.panel.innerHTML = this.panelFrame(title, `
       ${hiddenNotice}
+      <div class="rl-audience-summary">${roleIcon(normalizeAudienceRole(pin.audience_role))}<span>${escapeHtml(this.t('workIntendedForValue', { role: this.audienceLabel(pin.audience_role) }))}</span></div>
       <div class="rl-status-row"><span class="rl-status is-${escapeHtml(pin.status)}">${escapeHtml(this.t(pin.status === 'resolved' ? 'statusResolved' : 'statusOpen'))}</span>${statusAction}<button class="rl-icon-button rl-small" type="button" data-action="refresh-pin" aria-label="${escapeHtml(this.t('refresh'))}" title="${escapeHtml(this.t('refresh'))}">${materialIcon('refresh')}</button></div>
       <div class="rl-messages">${messages || `<p class="rl-empty">${escapeHtml(this.t('noMessages'))}</p>`}</div>
-      <form data-form="reply" class="rl-form rl-reply-form">
-        ${this.authorName ? '' : `<label>${escapeHtml(this.t('yourName'))}<input name="author_name" maxlength="80" required autocomplete="name"></label>`}
-        ${replyEmailField}
-        <label>${escapeHtml(this.t('reply'))}<textarea name="message" maxlength="5000" required rows="3" placeholder="${escapeHtml(this.t('replyPlaceholder'))}"></textarea></label>
-        <button class="rl-button rl-button-primary" type="submit" data-role="reply-submit">${escapeHtml(this.t('send'))}</button>
-      </form>
+      ${replyForm}
       <details class="rl-details"><summary>${escapeHtml(this.t('technicalDetails'))}</summary>
         <dl>
           <div><dt>${escapeHtml(this.t('pageAddress'))}</dt><dd>${escapeHtml(pin.page_url)}</dd></div>
           <div><dt>${escapeHtml(this.t('anchor'))}</dt><dd>${escapeHtml(pin.anchor_uncertain ? this.t('anchorUncertain') : this.t('anchorCertain'))}</dd></div>
           <div><dt>${escapeHtml(this.t('createdBy'))}</dt><dd>${escapeHtml(pin.author_name)}</dd></div>
+          <div><dt>${escapeHtml(this.t('workIntendedFor'))}</dt><dd>${escapeHtml(this.audienceLabel(pin.audience_role))}</dd></div>
           <div><dt>${escapeHtml(this.t('createdAt'))}</dt><dd>${escapeHtml(this.formatDate(pin.created_at))}</dd></div>
           <div><dt>${escapeHtml(this.t('addedViewport', { width: viewport.width || '?', height: viewport.height || '?' }))}</dt><dd>${escapeHtml(viewport.device_type || this.t('unknown'))}</dd></div>
           <div><dt>${escapeHtml(this.t('browser'))}</dt><dd>${escapeHtml(browser.browser || this.t('unknown'))}</dd></div>
@@ -1197,6 +1300,7 @@ class ReviewLayerApp {
         project_key: this.projectKey,
         author_id: this.authorId,
         author_name: authorName,
+        role_key: this.userRoleKey,
         message
       });
       this.authorName = authorName;
@@ -1380,18 +1484,47 @@ class ReviewLayerApp {
       const unreadButton = unreadType
         ? `<button class="rl-unread-indicator is-${unreadType}" type="button" data-action="mark-project-pin-read" data-pin-id="${escapeHtml(pin.id)}" aria-label="${escapeHtml(unreadLabel)}" title="${escapeHtml(unreadLabel)}"><span aria-hidden="true"></span></button>`
         : '';
+      const audienceRole = normalizeAudienceRole(pin.audience_role);
       return `<article class="rl-project-pin">
         <button class="rl-project-pin-open" type="button" data-action="open-project-pin" data-pin-id="${escapeHtml(pin.id)}" aria-label="${escapeHtml(this.t('openProjectPin', { number: pin.pin_number, page }))}">
-          <span class="rl-project-pin-head">${unreadSlot}${this.deviceBadge(pin.viewport?.device_type, 'list')}<strong>#${escapeHtml(pin.pin_number)}</strong><span class="rl-status is-${escapeHtml(pin.status)}">${escapeHtml(this.t(statusKey))}</span>${authorBadge(pin.author_name, pin.author_color_index)}<span class="rl-project-pin-arrow" aria-hidden="true">${materialIcon('arrow_forward')}</span></span>
+          <span class="rl-project-pin-head">${unreadSlot}${this.deviceBadge(pin.viewport?.device_type, 'list')}<strong>#${escapeHtml(pin.pin_number)}</strong><span class="rl-status is-${escapeHtml(pin.status)}">${escapeHtml(this.t(statusKey))}</span>${authorBadge(pin.author_name, pin.author_color_index, pin.author_role_key)}<span class="rl-project-pin-arrow" aria-hidden="true">${materialIcon('arrow_forward')}</span></span>
           <span class="rl-project-pin-page" title="${escapeHtml(pin.page_url)}">${escapeHtml(page)}</span>
           <span class="rl-project-pin-message">${escapeHtml(pin.first_message || this.t('noMessages'))}</span>
         </button>
+        <label class="rl-project-pin-audience"><span>${roleIcon(audienceRole)}${escapeHtml(this.t('workIntendedFor'))}</span><select data-pin-audience data-pin-id="${escapeHtml(pin.id)}" data-previous="${audienceRole}" aria-label="${escapeHtml(this.t('workIntendedForPin', { number: pin.pin_number }))}">${this.audienceOptions(audienceRole)}</select></label>
         ${unreadButton}
       </article>`;
     }).join('');
     this.panel.innerHTML = this.panelFrame(this.t('allProjectPins'), `
       <p class="rl-panel-intro">${escapeHtml(this.t('projectPinsIntro', { project: this.projectKey, count: this.projectPins.length }))}</p>
       <div class="rl-project-pins">${items || `<p class="rl-empty">${escapeHtml(this.t('noProjectPins'))}</p>`}</div>`);
+  }
+
+  async updatePinAudience(select) {
+    const pinId = select.dataset.pinId || '';
+    const previous = normalizeAudienceRole(select.dataset.previous);
+    const audienceRole = normalizeAudienceRole(select.value);
+    if (!pinId || audienceRole === previous) return;
+    select.disabled = true;
+    try {
+      await this.api.updatePinAudience(pinId, {
+        project_key: this.projectKey,
+        author_id: this.authorId,
+        audience_role: audienceRole
+      });
+      select.dataset.previous = audienceRole;
+      for (const collection of [this.projectPins, this.pins]) {
+        const pin = collection.find((candidate) => candidate.id === pinId);
+        if (pin) pin.audience_role = audienceRole;
+      }
+      if (this.currentPin?.id === pinId) this.currentPin.audience_role = audienceRole;
+      this.showToast(this.t('pinAudienceUpdated', { role: this.audienceLabel(audienceRole) }));
+    } catch (error) {
+      select.value = previous;
+      this.handleError(error);
+    } finally {
+      if (select.isConnected) select.disabled = false;
+    }
   }
 
   navigateToProjectPin(id) {
@@ -1456,20 +1589,61 @@ class ReviewLayerApp {
   renderNotificationRecipients() {
     if (this.panelType !== 'notifications') return;
     const recipients = this.notificationRecipients.filter((recipient) => !recipient.is_current);
+    const availableRecipients = recipients.filter((recipient) => recipient.email_verified && recipient.recipient_id);
+    const groupItems = AUDIENCE_ROLES.map((roleKey) => {
+      const matching = availableRecipients.filter((recipient) => roleKey === 'all'
+        || [roleKey, 'generalist'].includes(normalizeRoleKey(recipient.role_key)));
+      const disabled = matching.length === 0;
+      return `<li class="rl-notification-group">
+        <span class="rl-notification-group-name"><span class="rl-role-legend-icon">${roleIcon(roleKey)}</span><span><strong>${escapeHtml(this.audienceLabel(roleKey))}</strong><small>${escapeHtml(this.t('verifiedRecipientsCount', { count: matching.length }))}</small></span></span>
+        <button class="rl-button ${disabled ? 'rl-button-muted' : 'rl-button-primary'}" type="button" data-action="notify-role" data-audience-role="${roleKey}" data-role-name="${escapeHtml(this.audienceLabel(roleKey))}"${disabled ? ' disabled' : ''}>${materialIcon('outgoing_mail')}<span>${escapeHtml(this.t('notifyRole'))}</span></button>
+      </li>`;
+    }).join('');
     const items = recipients.map((recipient) => {
       const available = recipient.email_verified && recipient.recipient_id;
       const label = available
         ? this.t('notifyUser', { user: recipient.author_name })
         : this.t('userEmailUnavailable', { user: recipient.author_name });
       return `<li class="rl-notification-recipient">
-        <span class="rl-notification-recipient-name">${authorBadge(recipient.author_name, recipient.color_index)}<small>${escapeHtml(available ? this.t('verifiedEmail') : this.t('noVerifiedEmail'))}</small></span>
+        <span class="rl-notification-recipient-name">${authorBadge(recipient.author_name, recipient.color_index, recipient.role_key)}<small>${escapeHtml(available ? this.t('verifiedEmail') : this.t('noVerifiedEmail'))}</small></span>
         <button class="rl-button ${available ? 'rl-button-primary' : 'rl-button-muted'}" type="button" data-action="notify-user" data-recipient-id="${escapeHtml(recipient.recipient_id)}" data-recipient-name="${escapeHtml(recipient.author_name)}"${available ? '' : ' disabled'}>${materialIcon('outgoing_mail')}<span>${escapeHtml(label)}</span></button>
       </li>`;
     }).join('');
     const content = items
-      ? `<p class="rl-panel-intro">${escapeHtml(this.t('notificationsIntro'))}</p><ul class="rl-notification-recipients">${items}</ul><p class="rl-notification-footnote">${escapeHtml(this.t('notificationsManualOnly'))}</p>`
+      ? `<p class="rl-panel-intro">${escapeHtml(this.t('notificationsIntro'))}</p>
+        <h3 class="rl-notification-section-title">${escapeHtml(this.t('notifyByRole'))}</h3>
+        <ul class="rl-notification-recipients rl-notification-groups">${groupItems}</ul>
+        <h3 class="rl-notification-section-title">${escapeHtml(this.t('notifyIndividual'))}</h3>
+        <ul class="rl-notification-recipients">${items}</ul>
+        <p class="rl-notification-footnote">${escapeHtml(this.t('notificationsManualOnly'))}</p>`
       : `<p class="rl-notification-empty">${escapeHtml(this.t('noNotificationRecipients'))}</p>`;
     this.panel.innerHTML = this.panelFrame(this.t('emailNotifications'), content);
+  }
+
+  async notifyRole(button) {
+    const audienceRole = normalizeAudienceRole(button.dataset.audienceRole);
+    if (button.disabled) return;
+    const original = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = `${materialIcon('progress_activity')}<span>${escapeHtml(this.t('sending'))}</span>`;
+    try {
+      const result = await this.api.sendRoleNotification({
+        ...this.notificationIdentity(),
+        audience_role: audienceRole,
+        page_url: this.currentPageUrl || window.location.href
+      });
+      this.showToast(this.t('roleNotificationSent', {
+        role: button.dataset.roleName || this.audienceLabel(audienceRole),
+        count: result.sent || 0
+      }));
+    } catch (error) {
+      this.handleError(error);
+    } finally {
+      if (button.isConnected) {
+        button.disabled = false;
+        button.innerHTML = original;
+      }
+    }
   }
 
   async notifyUser(button) {
@@ -1585,6 +1759,11 @@ class ReviewLayerApp {
       <h3 id="rl-users-title">${escapeHtml(this.t('activeUsers'))}</h3>
       <div class="rl-project-users" data-role="project-users"><span class="rl-loading">${escapeHtml(this.t('loading'))}</span></div>
     </section>`;
+    const rolesSection = `<section class="rl-settings-section rl-role-legend" aria-labelledby="rl-role-legend-title">
+      <h3 id="rl-role-legend-title">${escapeHtml(this.t('roleLegend'))}</h3>
+      <p>${escapeHtml(this.t('roleLegendHint'))}</p>
+      <ul>${this.roleLegendMarkup()}</ul>
+    </section>`;
     const notificationSection = this.bootstrapData?.notifications_available === true
       ? `<section class="rl-settings-section" aria-labelledby="rl-notification-settings-title">
           <h3 id="rl-notification-settings-title">${escapeHtml(this.t('emailNotifications'))}</h3>
@@ -1598,12 +1777,15 @@ class ReviewLayerApp {
     this.panel.innerHTML = this.panelFrame(this.t('settings'), `
       <form data-form="settings" class="rl-form">
         <label>${escapeHtml(this.t('yourName'))}<input name="author_name" maxlength="80" autocomplete="name" value="${escapeHtml(this.authorName)}"></label>
+        <label>${escapeHtml(this.t('yourRole'))}<select name="role_key">${this.roleOptions()}</select><small>${escapeHtml(this.t('yourRoleHint'))}</small></label>
+        <div class="rl-role-preview" data-role="role-preview">${roleIcon(this.userRoleKey)}<span>${escapeHtml(this.roleLabel(this.userRoleKey))}</span></div>
         <label>${escapeHtml(this.t('language'))}<select name="language"><option value="pl"${this.language === 'pl' ? ' selected' : ''}>${escapeHtml(this.t('languagePolish'))}</option><option value="en"${this.language === 'en' ? ' selected' : ''}>${escapeHtml(this.t('languageEnglish'))}</option></select></label>
         <label>${escapeHtml(this.t('accessCode'))}<input name="access_code" type="password" maxlength="200" autocomplete="off" value="${escapeHtml(this.accessCode)}"><small>${escapeHtml(this.t('accessCodeHint'))}</small></label>
         <div class="rl-help"><strong>${escapeHtml(this.t('shortcutHelp'))}</strong><span>${escapeHtml(this.t('togglePinsShortcut'))}</span><span>${escapeHtml(this.t('closeWithEscape'))}</span></div>
         <button class="rl-button rl-button-primary" type="submit">${escapeHtml(this.t('save'))}</button>
       </form>
       ${notificationSection}
+      ${rolesSection}
       ${backupSection}
       ${usersSection}
       ${this.attributionMarkup(attribution)}`, 'rl-settings-body');
@@ -1621,13 +1803,20 @@ class ReviewLayerApp {
       if (this.panelType !== 'settings' || !container.isConnected) return;
       this.projectUsers = data.users || [];
       container.innerHTML = this.projectUsers.length
-        ? this.projectUsers.map((user) => authorBadge(user.author_name, user.color_index)).join('')
+        ? this.projectUsers.map((user) => authorBadge(user.author_name, user.color_index, user.role_key)).join('')
         : `<span class="rl-empty">${escapeHtml(this.t('noActiveUsers'))}</span>`;
     } catch (error) {
       if (error.name === 'AbortError') return;
       container.innerHTML = `<span class="rl-empty">${escapeHtml(this.t('activeUsersLoadFailed'))}</span>`;
       this.handleError(error);
     }
+  }
+
+  updateRolePreview(roleKey) {
+    const preview = this.panel?.querySelector('[data-role="role-preview"]');
+    if (!preview) return;
+    const normalized = normalizeRoleKey(roleKey);
+    preview.innerHTML = `${roleIcon(normalized)}<span>${escapeHtml(this.roleLabel(normalized))}</span>`;
   }
 
   attributionMarkup(attribution = readAttributionManifest()) {
@@ -1713,12 +1902,23 @@ class ReviewLayerApp {
   async saveSettings(form) {
     const data = new FormData(form);
     this.authorName = String(data.get('author_name') || '').trim();
+    this.userRoleKey = normalizeRoleKey(data.get('role_key'));
     this.accessCode = String(data.get('access_code') || '');
     const nextLanguage = String(data.get('language') || 'en');
     safeSet(localStorage, 'reviewlayer:author-name', this.authorName);
+    safeSet(localStorage, this.userRoleKeyStorage, this.userRoleKey);
     safeSet(localStorage, 'reviewlayer:language', nextLanguage);
     safeSet(sessionStorage, `reviewlayer:${this.projectKey}:access-code`, this.accessCode);
     this.api.setAccessCode(this.accessCode);
+    try {
+      await this.api.updateUserRole({
+        project_key: this.projectKey,
+        author_id: this.authorId,
+        role_key: this.userRoleKey
+      });
+    } catch (error) {
+      console.warn('[ReviewLayer] Unable to save commenter role on the server.', error?.code || error);
+    }
     if (this.bootstrapData?.notifications_available === true) {
       try {
         const result = await this.api.notificationSettings(this.notificationIdentity(nextLanguage));

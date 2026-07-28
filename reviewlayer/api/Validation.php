@@ -191,6 +191,16 @@ final class Validation
         return $value;
     }
 
+    public static function roleKey(mixed $value): string
+    {
+        return self::oneOf($value, 'role_key', ['unassigned', 'editor', 'developer', 'designer', 'generalist']);
+    }
+
+    public static function audienceRole(mixed $value): string
+    {
+        return self::oneOf($value, 'audience_role', ['all', 'editor', 'developer', 'designer']);
+    }
+
     public static function oneOf(mixed $value, string $field, array $allowed): string
     {
         if (!is_string($value) || !in_array($value, $allowed, true)) {

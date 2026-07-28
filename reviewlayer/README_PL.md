@@ -1,6 +1,6 @@
 # ReviewLayer
 
-ReviewLayer 1.3.8 to niezależna nakładka do komentowania prototypów stron. Klient może przypiąć uwagę do elementu strony, prowadzić rozmowę, oznaczyć ją jako rozwiązaną i wrócić do niej na innym urządzeniu. Instalacja działa bez Node.js, procesu build, MySQL, CDN i usług SaaS.
+ReviewLayer 1.4.0 to niezależna nakładka do komentowania prototypów stron. Klient może przypiąć uwagę do elementu strony, prowadzić rozmowę, oznaczyć ją jako rozwiązaną i wrócić do niej na innym urządzeniu. Instalacja działa bez Node.js, procesu build, MySQL, CDN i usług SaaS.
 
 ## Wymagania serwera
 
@@ -91,9 +91,15 @@ Przy pierwszym komentarzu formularz prosi o imię. Imię i losowy UUID autora s�
 
 Każdy nowy komentujący w projekcie otrzymuje kolejny kolor z palety dziesięciu barw; jedenasty użytkownik ponownie dostaje kolor pierwszy. Pinezki i etykiety autora zachowują to przypisanie, rozwiązane pinezki używają mniej nasyconego odpowiednika, a Ustawienia pokazują wszystkich zarejestrowanych komentujących projektu. Zmiana wyświetlanego imienia nie zmienia koloru.
 
+Każdy komentujący może wybrać w Ustawieniach jedną rolę: Redaktor, Programista, Projektant, Generalista albo Nieprzypisana. Ikony ról korzystają z lokalnego fontu Material Symbols i pojawiają się w etykietach autorów. Generalista należy do każdej specjalistycznej grupy powiadomień.
+
+Nowa pinezka ma pole „Prace dla”: Wszystkie role, Redaktorzy, Programiści albo Projektanci. Adresata można później zmienić bezpośrednio na liście pinezek projektu. Istniejące pinezki bezpiecznie otrzymują Wszystkie role, a dotychczasowi komentujący rolę Nieprzypisana. SQLite dopisuje kolumny z wartościami domyślnymi bez przebudowy tabel, a JSON uzupełnia brakujące pola podczas odczytu. Pinezki, wiadomości, numeracja, statusy, kolory i daty pozostają bez zmian.
+
+Rozwiązana rozmowa jest w panelu tylko do odczytu: formularz odpowiedzi wraca natychmiast po ponownym otwarciu pinezki.
+
 ### Ręczne powiadomienia e-mail
 
-Ikona wysyłania otwiera listę komentujących w projekcie. Kliknięcie „Powiadom…” wysyła jedną krótką wiadomość wprost przez natywny transport pocztowy PHP serwera. ReviewLayer nigdy nie wysyła e-maili po dodaniu komentarza, według harmonogramu ani z crona. Każda wiadomość wymaga świadomego kliknięcia. Polski lub angielski szablon jest wybierany na podstawie języka zapisanego przez odbiorcę.
+Ikona wysyłania otwiera odbiorców indywidualnych oraz grupy ról. Kliknięcie „Powiadom…” wysyła jedną krótką wiadomość wprost przez natywny transport pocztowy PHP serwera. Akcja grupowa wybiera tylko zweryfikowanych komentujących przypisanych do danej roli; Generalista należy do każdej grupy specjalistycznej, a odbiorcy są deduplikowani. ReviewLayer nigdy nie wysyła e-maili po dodaniu komentarza, według harmonogramu ani z crona. Każda wiadomość wymaga świadomego kliknięcia. Polski lub angielski szablon jest wybierany na podstawie języka zapisanego przez odbiorcę.
 
 Wiadomość wymienia wyłącznie pinezki utworzone przez nadawcę oraz zdarzenia wykonane przez niego na bieżącej stronie, zaczynając od najnowszych pinezek. Kolejne komentarze są grupowane (`komentarz ×3`), natomiast `rozwiązana` i `otwarta ponownie` zachowują kolejność chronologiczną. Niepowiązane pinezki ani treść komentarzy nigdy nie są umieszczane w e-mailu.
 
@@ -161,7 +167,7 @@ Soft delete zachowuje historię. Permanent purge fizycznie usuwa rekordy. Trwał
 
 W panelu „Ustawienia” znajduje się osobna sekcja „Kopia zapasowa”. Przycisk „Utwórz kopię teraz” zapisuje pełny eksport wszystkich projektów w `data/backups/` bez usuwania lub zmieniania danych. Jeśli kod administratora został skonfigurowany, aplikacja poprosi o niego przed wykonaniem kopii.
 
-Przy `CREATE_BACKUP_BEFORE_PURGE = true` trwałe czyszczenie najpierw zapisuje przenośny JSON w `data/backups/`. Zawiera wersję formatu, projekty i liczniki, pinezki, wiadomości, statusy, daty, kotwiczenie, viewport i dane przeglądarki. Kontakty powiadomień są wyłączone, ponieważ wymagają klucza szyfrującego konkretnej instalacji. Jeśli backup zawiedzie, purge jest blokowany, chyba że administrator jawnie zaznaczy kontynuację bez kopii.
+Przy `CREATE_BACKUP_BEFORE_PURGE = true` trwałe czyszczenie najpierw zapisuje przenośny JSON w `data/backups/`. Zawiera wersję formatu, projekty i liczniki, role i kolory komentujących, adresatów pinezek, pinezki, wiadomości, statusy, daty, kotwiczenie, viewport i dane przeglądarki. Kontakty powiadomień są wyłączone, ponieważ wymagają klucza szyfrującego konkretnej instalacji. Jeśli backup zawiedzie, purge jest blokowany, chyba że administrator jawnie zaznaczy kontynuację bez kopii.
 
 Przywracanie zastępuje aktualne dane całą zawartością backupu. Najpierw wykonaj dodatkową kopię katalogu `data`, włącz tryb konserwacyjny i z katalogu `reviewlayer` uruchom:
 

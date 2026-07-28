@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -11,6 +11,15 @@ const projectDirectory = resolve(appDirectory, '..');
 
 async function read(relativePath) {
   return readFile(resolve(appDirectory, relativePath), 'utf8');
+}
+
+async function projectFileExists(relativePath) {
+  try {
+    await access(resolve(projectDirectory, relativePath));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 test('Polish and English translations expose identical keys', async () => {
@@ -29,7 +38,11 @@ test('test page integrates ReviewLayer through one script tag only', async () =>
   assert.equal(matches.length, 1);
   assert.match(matches[0], /data-project="default"/);
   assert.match(matches[0], /data-lang="en"/);
-  assert.match(head, /<script src="\/reviewlayer\/embed\.js" data-project="default" data-lang="en" defer><\/script>\s*<meta name="robots" content="noindex,nofollow">/);
+  const isOnlineDistribution = await projectFileExists('DEPLOYMENT.md');
+  const robotsValue = isOnlineDistribution
+    ? 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1'
+    : 'noindex,nofollow';
+  assert.match(head, new RegExp(`<script src="/reviewlayer/embed\\.js" data-project="default" data-lang="en" defer></script>\\s*<meta name="robots" content="${robotsValue}">`));
 });
 
 test('demo hue rotation leaves the ReviewLayer host unfiltered', async () => {
@@ -142,6 +155,13 @@ test('status actions use a green resolve CTA and a blue reopen CTA with dedicate
   assert.match(css, /\.rl-status-action:hover[\s\S]*background:\s*#06634b;/);
   assert.match(css, /\.rl-status-action\.is-reopen[\s\S]*background:\s*#1976d2;/);
   assert.match(css, /\.rl-status-action\.is-reopen:hover[\s\S]*background:\s*#1565c0;/);
+});
+
+test('resolved pins hide the reply form until they are reopened', async () => {
+  const app = await read('assets/app.js');
+  assert.match(app, /const replyForm = pin\.status === 'resolved'\s*\? ''\s*:\s*`<form data-form="reply"/);
+  assert.match(app, /\$\{replyForm\}[\s\S]*data-action="delete-pin"/);
+  assert.match(app, /this\.currentPin\.status = nextStatus;[\s\S]*this\.renderConversation\(\)/);
 });
 
 test('toolbar uses available width and persists its top or bottom position', async () => {
@@ -405,8 +425,8 @@ test('commenters receive persistent cycling colors visible across pins, messages
   assert.equal((app.match(/Object\.freeze\(\{ open: '#[0-9a-f]{6}', resolved: '#[0-9a-f]{6}' \}\)/g) || []).length, 10);
   assert.match(app, /open: '#4e5cc3', resolved: '#5a6597'/);
   assert.match(app, /authorColorStyle\(pin\.author_color_index\)/);
-  assert.match(app, /authorBadge\(message\.author_name, message\.author_color_index\)/);
-  assert.match(app, /authorBadge\(pin\.author_name, pin\.author_color_index\)/);
+  assert.match(app, /authorBadge\(message\.author_name, message\.author_color_index, message\.author_role_key\)/);
+  assert.match(app, /authorBadge\(pin\.author_name, pin\.author_color_index, pin\.author_role_key\)/);
   assert.match(app, /data-role="project-users"/);
   assert.match(client, /listProjectUsers\(projectKey, signal\)/);
   assert.match(api, /\$action === 'list-project-users'/);
@@ -418,6 +438,55 @@ test('commenters receive persistent cycling colors visible across pins, messages
   assert.match(css, /\.rl-author-badge\s*\{[^}]*padding:\s*1px 6px;[^}]*color:\s*#fff;[^}]*font-size:\s*12px;[^}]*border-radius:\s*2px;/);
   assert.match(css, /\.rl-project-pin-head \.rl-author-badge\s*\{[^}]*font-size:\s*12px;/);
   assert.match(css, /\.rl-message-head \.rl-author-badge\s*\{[^}]*font-size:\s*12px;/);
+});
+
+test('commenter roles, pin audiences, and role notifications remain self-hosted and backward compatible', async () => {
+  const [app, client, api, validation, storage, database, jsonStorage, notifications, css, en, pl] = await Promise.all([
+    read('assets/app.js'),
+    read('assets/api-client.js'),
+    read('api/index.php'),
+    read('api/Validation.php'),
+    read('api/StorageInterface.php'),
+    read('api/Database.php'),
+    read('api/JsonStorage.php'),
+    read('api/NotificationService.php'),
+    read('assets/reviewlayer.css'),
+    read('assets/i18n/en.json').then(JSON.parse),
+    read('assets/i18n/pl.json').then(JSON.parse)
+  ]);
+  assert.match(app, /const ROLE_KEYS = \['unassigned', 'editor', 'developer', 'designer', 'generalist'\]/);
+  for (const icon of ['palette', 'edit_note', 'code', 'all_inclusive']) assert.match(app, new RegExp(`'${icon}'`));
+  assert.match(app, /name="audience_role"/);
+  assert.match(app, /data-pin-audience/);
+  assert.match(app, /data-action="notify-role"/);
+  assert.match(client, /updateUserRole\(body, signal\)/);
+  assert.match(client, /updatePinAudience\(id, body, signal\)/);
+  assert.match(client, /sendRoleNotification\(body, signal\)/);
+  assert.match(api, /\$action === 'update-user-role'/);
+  assert.match(api, /\$action === 'update-pin-audience'/);
+  assert.match(api, /\$action === 'send-role-notification'/);
+  assert.match(validation, /function roleKey/);
+  assert.match(validation, /function audienceRole/);
+  assert.match(storage, /updateProjectUserRole/);
+  assert.match(storage, /updatePinAudience/);
+  assert.match(database, /ensureColumn\('pins', 'audience_role'/);
+  assert.match(database, /ensureColumn\('project_users', 'role_key'/);
+  assert.match(jsonStorage, /'format_version' => 4/);
+  assert.match(notifications, /function sendRole/);
+  assert.match(notifications, /\[\$audienceRole, 'generalist'\]/);
+  assert.match(css, /\.rl-role-legend/);
+  assert.match(css, /\.rl-project-pin-audience/);
+  for (const translations of [en, pl]) {
+    for (const key of ['roleEditor', 'roleDeveloper', 'roleDesigner', 'roleGeneralist', 'audienceAll', 'notifyByRole']) {
+      assert.ok(translations[key]);
+    }
+  }
+});
+
+test('pin audience selects cannot bubble into the on-page pin click handler', async () => {
+  const app = await read('assets/app.js');
+  assert.match(app, /closest\('\.rl-pin\[data-pin-id\], \.rl-pin-mention\[data-pin-mention-id\]'\)/);
+  assert.doesNotMatch(app, /closest\('\[data-pin-id\], \[data-pin-mention-id\]'\)/);
 });
 
 test('device badges identify pin viewport on markers, conversations, and project list', async () => {
@@ -507,7 +576,11 @@ test('data and backup directories contain direct-download protection', async () 
   assert.match(backupRules, /Require all denied/);
 });
 
-test('both manuals cover visibility, clearing, backup, restore, storage, and uninstall', async () => {
+test('both manuals cover visibility, clearing, backup, restore, storage, and uninstall', async (context) => {
+  if (!(await projectFileExists('reviewlayer/README_PL.md'))) {
+    context.skip('The online FTP package intentionally excludes distribution manuals.');
+    return;
+  }
   for (const file of ['README_PL.md', 'README_EN.md']) {
     const source = (await read(file)).toLowerCase();
     for (const term of ['alt + p', 'reviewlayer=clear', 'sqlite', 'json', 'backup', 'restore.php']) {
@@ -518,7 +591,11 @@ test('both manuals cover visibility, clearing, backup, restore, storage, and uni
   assert.ok((await read('README_EN.md')).toLowerCase().includes('uninstall'));
 });
 
-test('both manuals place one-line embed calls and noindex in the head', async () => {
+test('both manuals place one-line embed calls and noindex in the head', async (context) => {
+  if (!(await projectFileExists('reviewlayer/README_PL.md'))) {
+    context.skip('The online FTP package intentionally excludes distribution manuals.');
+    return;
+  }
   for (const file of ['README_PL.md', 'README_EN.md']) {
     const source = await read(file);
     assert.match(source, /<head>/);

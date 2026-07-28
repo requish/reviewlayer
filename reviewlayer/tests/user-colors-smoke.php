@@ -74,6 +74,15 @@ function verifyUserColors(StorageInterface $storage, string $projectKey): void
     if (array_key_exists('author_id', $users[0])) {
         throw new RuntimeException($storage->mode() . ': project user API data exposes a private author ID.');
     }
+    if (($users[0]['role_key'] ?? null) !== 'unassigned') {
+        throw new RuntimeException($storage->mode() . ': legacy commenters must default to an unassigned role.');
+    }
+    if (!$storage->updateProjectUserRole($projectKey, $firstAuthorId, 'editor', '2026-01-01T00:00:11Z')) {
+        throw new RuntimeException($storage->mode() . ': commenter role could not be updated.');
+    }
+    if (!$storage->updatePinAudience($pinId, $projectKey, 'designer', '2026-01-01T00:00:11Z')) {
+        throw new RuntimeException($storage->mode() . ': pin audience could not be updated.');
+    }
 
     $loaded = $storage->getPin($pinId, $projectKey);
     if (!is_array($loaded) || count($loaded['messages'] ?? []) !== 11) {
@@ -82,10 +91,19 @@ function verifyUserColors(StorageInterface $storage, string $projectKey): void
     if (array_column($loaded['messages'], 'author_color_index') !== [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1]) {
         throw new RuntimeException($storage->mode() . ': conversation message colors are invalid.');
     }
+    if (($loaded['author_role_key'] ?? null) !== 'editor'
+        || ($loaded['messages'][0]['author_role_key'] ?? null) !== 'editor'
+        || ($loaded['audience_role'] ?? null) !== 'designer') {
+        throw new RuntimeException($storage->mode() . ': commenter role or pin audience was not hydrated.');
+    }
     $projectSummary = $storage->listProjectPins($projectKey)[0] ?? [];
     if (($storage->listPins($projectKey, 'https://example.com/')[0]['author_color_index'] ?? null) !== 1
         || ($projectSummary['author_color_index'] ?? null) !== 1) {
         throw new RuntimeException($storage->mode() . ': pin summaries do not contain the author color.');
+    }
+    if (($projectSummary['author_role_key'] ?? null) !== 'editor'
+        || ($projectSummary['audience_role'] ?? null) !== 'designer') {
+        throw new RuntimeException($storage->mode() . ': project pin summary does not preserve roles.');
     }
     if (($projectSummary['message_count'] ?? null) !== 11
         || ($projectSummary['last_message_at'] ?? '') !== '2026-01-01T00:00:11Z') {
@@ -106,16 +124,26 @@ function verifyUserColors(StorageInterface $storage, string $projectKey): void
     }
 
     $backup = $storage->exportAll();
-    if (($backup['format_version'] ?? null) !== 3 || count($backup['users'] ?? []) !== 11 || count($backup['status_events'] ?? []) !== 2) {
+    if (($backup['format_version'] ?? null) !== 4 || count($backup['users'] ?? []) !== 11 || count($backup['status_events'] ?? []) !== 2) {
         throw new RuntimeException($storage->mode() . ': backup does not preserve project users.');
     }
 
     $legacyBackup = $backup;
     $legacyBackup['format_version'] = 2;
     unset($legacyBackup['status_events']);
+    foreach ($legacyBackup['users'] as &$legacyUser) unset($legacyUser['role_key']);
+    unset($legacyUser);
+    foreach ($legacyBackup['pins'] as &$legacyPin) unset($legacyPin['audience_role']);
+    unset($legacyPin);
     $storage->restoreAll($legacyBackup);
-    if ($storage->getPin($pinId, $projectKey) === null || $storage->listPinStatusEvents($pinId, $projectKey) !== []) {
+    $legacyPin = $storage->getPin($pinId, $projectKey);
+    if ($legacyPin === null || $storage->listPinStatusEvents($pinId, $projectKey) !== []) {
         throw new RuntimeException($storage->mode() . ': a version 2 backup was not restored compatibly.');
+    }
+    if (($legacyPin['audience_role'] ?? null) !== 'all'
+        || ($legacyPin['author_role_key'] ?? null) !== 'unassigned'
+        || count($legacyPin['messages'] ?? []) !== 11) {
+        throw new RuntimeException($storage->mode() . ': legacy role defaults or messages were not restored compatibly.');
     }
 
     $cleared = $storage->clear('current_page', 'soft', $projectKey, 'http://www.example.com/', '2026-01-02T00:00:00Z');

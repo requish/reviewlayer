@@ -25,7 +25,8 @@ try {
     $raw = file_get_contents($backupPath);
     if ($raw === false) throw new RuntimeException('Unable to read the backup.');
     $backup = json_decode($raw, true, 64, JSON_THROW_ON_ERROR);
-    if (!is_array($backup) || (int) ($backup['format_version'] ?? 0) !== 1) {
+    $formatVersion = is_array($backup) ? (int) ($backup['format_version'] ?? 0) : 0;
+    if (!is_array($backup) || $formatVersion < 1 || $formatVersion > 4) {
         throw new RuntimeException('Unsupported backup format.');
     }
     $storage = ReviewLayer\createStorage(ReviewLayer\loadConfig());

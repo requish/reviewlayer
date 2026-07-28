@@ -38,6 +38,7 @@ $storage = new class($authorId, $secondAuthorId) implements StorageInterface {
                 'author_id' => $authorId,
                 'author_name' => 'Test User',
                 'color_index' => 1,
+                'role_key' => 'developer',
                 'sequence_number' => 1,
                 'created_at' => '2026-01-01T00:00:00Z',
                 'updated_at' => '2026-01-01T00:00:00Z',
@@ -46,6 +47,7 @@ $storage = new class($authorId, $secondAuthorId) implements StorageInterface {
                 'author_id' => $secondAuthorId,
                 'author_name' => 'Mobile Alias',
                 'color_index' => 2,
+                'role_key' => 'generalist',
                 'sequence_number' => 2,
                 'created_at' => '2026-01-02T00:00:00Z',
                 'updated_at' => '2026-01-02T00:00:00Z',
@@ -76,6 +78,8 @@ $storage = new class($authorId, $secondAuthorId) implements StorageInterface {
         $this->mergeCount++;
         return true;
     }
+    public function updateProjectUserRole(string $projectKey, string $authorId, string $roleKey, string $updatedAt): bool { return false; }
+    public function updatePinAudience(string $id, string $projectKey, string $audienceRole, string $updatedAt): bool { return false; }
     public function getPin(string $id, string $projectKey): ?array
     {
         if ($id === '33333333-3333-4333-8333-333333333333') {

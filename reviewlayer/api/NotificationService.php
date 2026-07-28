@@ -416,6 +416,7 @@ final class NotificationService
             return [
                 'author_name' => (string) $user['author_name'],
                 'color_index' => (int) $user['color_index'],
+                'role_key' => (string) ($user['role_key'] ?? 'unassigned'),
                 'recipient_id' => $verified ? (string) ($profile['recipient_id'] ?? '') : '',
                 'email_verified' => $verified,
                 'is_current' => hash_equals((string) $user['author_id'], (string) $sender['author_id']),
@@ -443,6 +444,76 @@ final class NotificationService
         }
         $pageUrl = Validation::canonicalPageKey(Validation::pageUrl($pageUrl));
         $notificationItems = $this->notificationItems($storage, $projectKey, $pageUrl, (string) $sender['author_id']);
+        $this->deliverNotification($projectKey, $sender, $recipient, $recipientId, $pageUrl, $notificationItems);
+    }
+
+    public function sendRole(
+        StorageInterface $storage,
+        string $projectKey,
+        string $authorId,
+        string $authorSecret,
+        string $language,
+        string $audienceRole,
+        string $pageUrl
+    ): int {
+        $this->assertAvailable();
+        $sender = $this->claimProfile($storage, $projectKey, $authorId, $authorSecret, $language);
+        $audienceRole = Validation::audienceRole($audienceRole);
+        $eligibleAuthorIds = [];
+        foreach ($storage->listProjectUserRecords($projectKey) as $user) {
+            $roleKey = (string) ($user['role_key'] ?? 'unassigned');
+            if ($audienceRole !== 'all' && !in_array($roleKey, [$audienceRole, 'generalist'], true)) continue;
+            $eligibleAuthorIds[(string) ($user['author_id'] ?? '')] = true;
+        }
+
+        $recipients = [];
+        foreach ($this->read()['profiles'] as $profile) {
+            $profileAuthorId = (string) ($profile['author_id'] ?? '');
+            $recipientId = (string) ($profile['recipient_id'] ?? '');
+            if ((string) ($profile['project_key'] ?? '') !== $projectKey
+                || !isset($eligibleAuthorIds[$profileAuthorId])
+                || hash_equals($profileAuthorId, (string) $sender['author_id'])
+                || (string) ($profile['email_verified_at'] ?? '') === ''
+                || (string) ($profile['email_ciphertext'] ?? '') === ''
+                || $recipientId === '') {
+                continue;
+            }
+            $recipients[$recipientId] = $profile;
+        }
+        if ($recipients === []) {
+            throw new NotificationException('EMAIL_NOT_VERIFIED', 'No matching commenter has a verified email address.');
+        }
+        if (count($recipients) > 25) {
+            throw new NotificationException('VALIDATION_ERROR', 'A role notification can include at most 25 recipients.');
+        }
+
+        $pageUrl = Validation::canonicalPageKey(Validation::pageUrl($pageUrl));
+        $notificationItems = $this->notificationItems($storage, $projectKey, $pageUrl, (string) $sender['author_id']);
+        $sent = 0;
+        $firstError = null;
+        foreach ($recipients as $recipientId => $recipient) {
+            try {
+                $this->deliverNotification($projectKey, $sender, $recipient, (string) $recipientId, $pageUrl, $notificationItems);
+                $sent++;
+            } catch (Throwable $error) {
+                $firstError ??= $error;
+            }
+        }
+        if ($sent === 0 && $firstError instanceof Throwable) {
+            throw $firstError;
+        }
+        return $sent;
+    }
+
+    /** @param array<string, mixed> $sender @param array<string, mixed> $recipient @param array<int, array<string, mixed>> $notificationItems */
+    private function deliverNotification(
+        string $projectKey,
+        array $sender,
+        array $recipient,
+        string $recipientId,
+        string $pageUrl,
+        array $notificationItems
+    ): void {
         $deliveryId = $this->reserveDelivery($projectKey, (string) $sender['author_id'], $recipientId);
         try {
             $email = $this->decrypt((string) $recipient['email_ciphertext']);

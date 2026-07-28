@@ -1,6 +1,6 @@
 # ReviewLayer
 
-ReviewLayer 1.3.8 is an independent annotation overlay for website prototypes. Clients can attach a note to a page element, discuss it, resolve it, and revisit it on another device. Installation needs no Node.js, build process, MySQL, CDN, or SaaS service.
+ReviewLayer 1.4.0 is an independent annotation overlay for website prototypes. Clients can attach a note to a page element, discuss it, resolve it, and revisit it on another device. Installation needs no Node.js, build process, MySQL, CDN, or SaaS service.
 
 ## Server requirements
 
@@ -91,9 +91,15 @@ The first comment form asks for a name. The name and a random author UUID are st
 
 Each new commenter in a project receives the next color from a ten-color palette; the eleventh commenter reuses the first color. Pins and author badges keep that assignment, resolved pins use a less saturated companion color, and Settings lists all registered project commenters. Changing a display name does not change the assigned color.
 
+Each commenter can choose one working role in Settings: Editor, Developer, Designer, Generalist, or Unassigned. Role icons use the self-hosted Material Symbols font and appear inside author badges. A Generalist is included in every specialist notification group.
+
+New pins include a “Work intended for” field with All roles, Editors, Developers, or Designers. The audience can later be changed directly in the project pin list. Existing pins migrate safely to All roles and existing commenters to Unassigned. SQLite adds defaulted columns in place, while JSON fills missing fields during reading. Pins, messages, numbering, statuses, colors, and timestamps remain unchanged.
+
+A resolved conversation is read-only in the panel: its reply form returns immediately after the pin is reopened.
+
 ### Manual email notifications
 
-The outgoing-mail icon opens the project commenter list. Selecting “Notify…” sends one short localized message immediately through the server's native PHP mail transport. ReviewLayer never sends email on a timer, after a new comment, or from cron. Every message requires an explicit click. The recipient's saved ReviewLayer language selects the Polish or English template.
+The outgoing-mail icon opens individual recipients and role groups. Selecting “Notify…” sends one short localized message immediately through the server's native PHP mail transport. A group action resolves only verified project commenters assigned to that role; Generalists are included in each specialist group and recipients are deduplicated. ReviewLayer never sends email on a timer, after a new comment, or from cron. Every message requires an explicit click. The recipient's saved ReviewLayer language selects the Polish or English template.
 
 The message lists only pins created by the sender and events added by that sender on the current page, newest pins first. Consecutive comments are grouped (`comment ×3`), while `solved` and `reopened` retain their chronological position. Unrelated pins and comment text are never included in the email.
 
@@ -161,7 +167,7 @@ Soft delete retains history. Permanent purge physically removes records. Purging
 
 Settings contains a separate “Backup” section. “Create backup now” writes a complete export of every project into `data/backups/` without deleting or changing data. If an administrator code is configured, the app asks for it before creating the backup.
 
-With `CREATE_BACKUP_BEFORE_PURGE = true`, permanent clearing first writes portable JSON into `data/backups/`. It includes format version, projects and counters, pins, messages, statuses, dates, anchor, viewport, and browser data. Notification contacts are excluded because they require the installation-specific encryption key. A backup failure blocks purge unless the administrator explicitly chooses to continue without it.
+With `CREATE_BACKUP_BEFORE_PURGE = true`, permanent clearing first writes portable JSON into `data/backups/`. It includes format version, projects and counters, commenter roles and colors, pin audiences, pins, messages, statuses, dates, anchor, viewport, and browser data. Notification contacts are excluded because they require the installation-specific encryption key. A backup failure blocks purge unless the administrator explicitly chooses to continue without it.
 
 Restore replaces current data with the complete backup. First make an extra copy of `data`, enable maintenance mode, and run from the `reviewlayer` directory:
 
