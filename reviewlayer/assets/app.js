@@ -1,4 +1,4 @@
-import { ApiClient, ApiError } from './api-client.js';
+import { ApiClient, ApiError } from './api-client.js?v=1.4.1';
 import { captureAnchor, createAnchorResolver, positionAnchor } from './anchor.js';
 import {
   createPinNavigationUrl,
@@ -11,7 +11,7 @@ import {
   removeReviewLayerParameters
 } from './page-key.js';
 
-const VERSION = '1.4.0';
+const VERSION = '1.4.1';
 const MATERIAL_ICON_FONT_FAMILY = 'ReviewLayer Material Symbols';
 const FILTERS = ['all', 'mobile', 'tablet', 'desktop'];
 const ROLE_KEYS = ['unassigned', 'editor', 'developer', 'designer', 'generalist'];

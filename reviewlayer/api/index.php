@@ -522,20 +522,6 @@ try {
         ReviewLayer\requireMethod('PATCH', 'POST');
         $projectKey = Validation::projectKey($body['project_key'] ?? null);
         $id = Validation::uuid($_GET['id'] ?? null);
-        $authorId = $notifications->resolveAuthorId(
-            $projectKey,
-            Validation::uuid($body['author_id'] ?? null, 'author_id')
-        );
-        $knownAuthor = false;
-        foreach ($storage->listProjectUserRecords($projectKey) as $user) {
-            if (hash_equals((string) ($user['author_id'] ?? ''), $authorId)) {
-                $knownAuthor = true;
-                break;
-            }
-        }
-        if (!$knownAuthor) {
-            throw new SecurityException('ACCESS_DENIED', 'Only a project commenter can change the pin audience.');
-        }
         $audienceRole = Validation::audienceRole($body['audience_role'] ?? null);
         if (!$storage->updatePinAudience($id, $projectKey, $audienceRole, gmdate('c'))) {
             ReviewLayer\respond(false, null, ['code' => 'NOT_FOUND', 'message' => 'Pin not found.'], 404);

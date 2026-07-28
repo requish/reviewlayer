@@ -18,7 +18,7 @@ export class ApiClient {
     this.accessCode = accessCode || '';
   }
 
-  async request(action, { method = 'GET', params = {}, body, signal } = {}) {
+  async request(action, { method = 'GET', params = {}, body, signal, retryCsrf = true } = {}) {
     const url = new URL(this.endpoint);
     url.searchParams.set('action', action);
     for (const [name, value] of Object.entries(params)) {
@@ -64,6 +64,11 @@ export class ApiClient {
 
     if (!response.ok || payload.success !== true) {
       const apiError = payload?.error || {};
+      if (apiError.code === 'CSRF_ERROR' && method !== 'GET' && retryCsrf) {
+        const bootstrap = await this.request('bootstrap', { signal, retryCsrf: false });
+        this.csrfToken = bootstrap.csrf_token;
+        return this.request(action, { method, params, body, signal, retryCsrf: false });
+      }
       throw new ApiError(apiError.code || 'REQUEST_FAILED', apiError.message || 'Request failed.', response.status);
     }
 
