@@ -903,18 +903,6 @@ pre {
     linear-gradient(180deg, #0d0b1c 0%, #090914 60%, #07070d 100%);
 }
 
-.workflow-section::before {
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  background: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAEbSURBVDhPVZNZEsMwCEPJ0pwy5+jR+0tHip5LP5hksEELuLr76u5XVe3v+7Pr/31/zu4+uvusqk05oqqcV+h+KaGfFHFwUKjz3FkNc6bcpQYuTjdHd5tJCnUmVmYQlgbVvcqBL0lOmkwUAUBdYbmJo5Ik8GOLjOfSw2oy+AFFh1D0FbIaQZNmRsQnitNodbdZQTGSWKRoSrBfGC4GuOvidBXqmkBAkOgvxtIASjZ0Nom5ljO88q4sExkVUqYkpgMyjGDsMaKZudOUwmGspyTDA3qKAQUYBCL78Tfa5L32jBEkxXJ36GZKHvWQoZF7ExcaIxpvgcdlBmHCpj4LNQ7ZMPS6SfR679GdnPM8pjVKNjKSvERh5Qa5z7SuL9i223BQGPt9AAAAAElFTkSuQmCC") 0 0 / 16px 16px repeat;
-  content: "";
-  opacity: .5;
-  -webkit-mask-image: radial-gradient(ellipse 98% 104% at -20% 48%, #000 0%, rgba(0, 0, 0, .78) 48%, rgba(0, 0, 0, .24) 72%, transparent 92%);
-  mask-image: radial-gradient(ellipse 98% 104% at -20% 48%, #000 0%, rgba(0, 0, 0, .78) 48%, rgba(0, 0, 0, .24) 72%, transparent 92%);
-  pointer-events: none;
-}
-
 .workflow-grid {
   position: relative;
   z-index: 1;
@@ -972,6 +960,20 @@ pre {
 .workflow-visual canvas {
   width: 100%;
   height: 565px;
+}
+
+.workflow-particle {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  width: 9px;
+  height: 9px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 18px var(--cyan);
+  pointer-events: none;
+  will-change: transform;
 }
 
 .workflow-visual figcaption {
@@ -1714,21 +1716,6 @@ pre {
     transform: translateY(0);
   }
 
-  .hero-glow-one {
-    animation: glowDriftOne 14s ease-in-out infinite alternate;
-  }
-
-  .hero-glow-two {
-    animation: glowDriftTwo 17s ease-in-out infinite alternate;
-  }
-}
-
-@keyframes glowDriftOne {
-  to { transform: translate(9vw, 6vw) scale(1.08); }
-}
-
-@keyframes glowDriftTwo {
-  to { transform: translate(-8vw, -4vw) scale(.92); }
 }
 
 @media (max-width: 1100px) {

@@ -191,8 +191,16 @@
       this.type = canvas.dataset.canvas;
       this.width = 0;
       this.height = 0;
-      this.visible = true;
+      this.visible = false;
+      this.workflowLayerKey = '';
+      this.workflowParticle = null;
       this.pointer = { x: .72, y: .28, active: false };
+      if (this.type === 'workflow') {
+        this.workflowParticle = document.createElement('span');
+        this.workflowParticle.className = 'workflow-particle';
+        this.workflowParticle.setAttribute('aria-hidden', 'true');
+        canvas.insertAdjacentElement('afterend', this.workflowParticle);
+      }
       this.resizeObserver = new ResizeObserver(() => this.resize());
       this.resizeObserver.observe(canvas);
       if (this.type === 'product') {
@@ -228,10 +236,28 @@
     draw(time) {
       if (!this.width || !this.height) return;
       const seconds = reducedMotion.matches ? .75 : time / 1000;
+      if (this.type === 'workflow') {
+        this.drawWorkflowScene(seconds);
+        return;
+      }
       this.context.clearRect(0, 0, this.width, this.height);
       if (this.type === 'product') drawProduct(this.context, this.width, this.height, seconds, this.pointer);
-      if (this.type === 'workflow') drawWorkflow(this.context, this.width, this.height, seconds);
       if (this.type === 'coverage') drawCoverage(this.context, this.width, this.height, seconds);
+    }
+
+    drawWorkflowScene(time) {
+      const layout = createWorkflowLayout(this.width, this.height);
+      const activeIndex = Math.floor(time * .42) % layout.nodes.length;
+      const layerKey = `${this.canvas.width}:${this.canvas.height}:${activeIndex}`;
+
+      if (this.workflowLayerKey !== layerKey) {
+        this.context.clearRect(0, 0, this.width, this.height);
+        drawWorkflowBase(this.context, this.width, this.height, layout, activeIndex);
+        this.workflowLayerKey = layerKey;
+      }
+
+      const particle = getWorkflowParticlePosition(layout, time);
+      this.workflowParticle.style.transform = `translate3d(${particle.x - 4.5}px, ${particle.y - 4.5}px, 0)`;
     }
   }
 
@@ -327,15 +353,7 @@
     context.restore();
   }
 
-  function drawWorkflow(context, width, height, time) {
-    drawGrid(context, width, height, width < 520 ? 30 : 44, .034);
-    const background = context.createRadialGradient(width * .52, height * .46, 0, width * .52, height * .46, width * .65);
-    background.addColorStop(0, 'rgba(118,92,246,.13)');
-    background.addColorStop(.45, 'rgba(61,217,235,.035)');
-    background.addColorStop(1, 'rgba(7,7,11,0)');
-    context.fillStyle = background;
-    context.fillRect(0, 0, width, height);
-
+  function createWorkflowLayout(width, height) {
     const vertical = width < 520;
     const nodes = vertical
       ? [
@@ -351,7 +369,23 @@
           { x: width * .78, y: height * .72 }
         ];
 
-    const connectionBend = vertical ? height * .05 : width * .09;
+    return {
+      vertical,
+      nodes,
+      connectionBend: vertical ? height * .05 : width * .09
+    };
+  }
+
+  function drawWorkflowBase(context, width, height, layout, activeIndex) {
+    drawGrid(context, width, height, width < 520 ? 30 : 44, .034);
+    const background = context.createRadialGradient(width * .52, height * .46, 0, width * .52, height * .46, width * .65);
+    background.addColorStop(0, 'rgba(118,92,246,.13)');
+    background.addColorStop(.45, 'rgba(61,217,235,.035)');
+    background.addColorStop(1, 'rgba(7,7,11,0)');
+    context.fillStyle = background;
+    context.fillRect(0, 0, width, height);
+
+    const { vertical, nodes, connectionBend } = layout;
 
     context.save();
     context.setLineDash([6, 8]);
@@ -369,7 +403,7 @@
 
     nodes.forEach((node, index) => {
       const size = vertical ? 74 : 88;
-      const active = index === Math.floor(time * .42) % nodes.length;
+      const active = index === activeIndex;
       context.save();
       context.shadowColor = active ? palette.action : 'transparent';
       context.shadowBlur = active ? 26 : 0;
@@ -386,26 +420,22 @@
       context.stroke();
       context.restore();
     });
+  }
 
+  function getWorkflowParticlePosition(layout, time) {
+    const { nodes, connectionBend } = layout;
     const progress = (time * .18) % (nodes.length - 1);
     const segment = Math.floor(progress);
     const local = progress - segment;
     const from = nodes[segment];
     const to = nodes[segment + 1];
-    const particle = cubicBezierPoint(
+    return cubicBezierPoint(
       from,
       { x: from.x + connectionBend, y: from.y },
       { x: to.x - connectionBend, y: to.y },
       to,
       local
     );
-    context.beginPath();
-    context.arc(particle.x, particle.y, 4.5, 0, Math.PI * 2);
-    context.fillStyle = '#fff';
-    context.shadowColor = palette.cyan;
-    context.shadowBlur = 18;
-    context.fill();
-    context.shadowBlur = 0;
   }
 
   function drawCoverage(context, width, height, time) {
@@ -440,32 +470,51 @@
   }
 
   const scenes = [...document.querySelectorAll('canvas[data-canvas]')].map((canvas) => new CanvasScene(canvas));
+  const canvasFrameInterval = 1000 / 30;
+  let animationFrame = 0;
+  let lastCanvasFrame = 0;
 
   if ('IntersectionObserver' in window) {
     const canvasObserver = new IntersectionObserver((entries) => {
       for (const entry of entries) {
         const scene = scenes.find((candidate) => candidate.canvas === entry.target);
-        if (scene) scene.visible = entry.isIntersecting;
+        if (!scene) continue;
+        scene.visible = entry.isIntersecting;
+        if (scene.visible) {
+          scene.draw(performance.now());
+          requestCanvasFrame();
+        }
       }
     }, { rootMargin: '160px 0px', threshold: 0 });
     scenes.forEach((scene) => canvasObserver.observe(scene.canvas));
+  } else {
+    scenes.forEach((scene) => { scene.visible = true; });
   }
 
-  let animationFrame = 0;
-  function animate(time) {
-    if (!document.hidden && !reducedMotion.matches) {
-      for (const scene of scenes) {
-        if (scene.visible) scene.draw(time);
-      }
-    }
+  function requestCanvasFrame() {
+    if (animationFrame || document.hidden || reducedMotion.matches || !scenes.some((scene) => scene.visible)) return;
     animationFrame = window.requestAnimationFrame(animate);
+  }
+
+  function animate(time) {
+    animationFrame = 0;
+    if (document.hidden || reducedMotion.matches || !scenes.some((scene) => scene.visible)) return;
+
+    const elapsed = time - lastCanvasFrame;
+    if (!lastCanvasFrame || elapsed >= canvasFrameInterval) {
+      lastCanvasFrame = time - (elapsed % canvasFrameInterval);
+      for (const scene of scenes) if (scene.visible) scene.draw(time);
+    }
+    requestCanvasFrame();
   }
 
   function resetMotion() {
     scenes.forEach((scene) => scene.draw(performance.now()));
-    if (!animationFrame) animationFrame = window.requestAnimationFrame(animate);
+    lastCanvasFrame = 0;
+    requestCanvasFrame();
   }
 
+  document.addEventListener('visibilitychange', requestCanvasFrame);
   reducedMotion.addEventListener?.('change', resetMotion);
   resetMotion();
 })();
