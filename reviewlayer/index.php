@@ -12,7 +12,7 @@ $translate = static fn (string $key): string => htmlspecialchars((string) ($tran
 $yesNo = static fn (bool $value): string => $translate($value ? 'yes' : 'no');
 
 $configPresent = is_file(__DIR__ . '/config.php');
-$dataWritable = is_dir(__DIR__ . '/data') && is_writable(__DIR__ . '/data');
+$dataWritable = false;
 $sqliteAvailable = extension_loaded('pdo_sqlite');
 $storageMode = $sqliteAvailable ? 'SQLite' : 'JSON';
 $configurationStatus = '';
@@ -20,6 +20,8 @@ $configurationStatus = '';
 try {
     require_once __DIR__ . '/api/bootstrap.php';
     $config = ReviewLayer\loadConfig();
+    $dataDirectory = ReviewLayer\dataDirectory($config);
+    $dataWritable = is_dir($dataDirectory) && is_writable($dataDirectory);
     $storage = ReviewLayer\createStorage($config);
     $storageMode = strtoupper($storage->mode());
 } catch (Throwable $error) {

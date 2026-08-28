@@ -143,6 +143,16 @@ $config = ReviewLayer\loadConfig();
 $config['NOTIFICATIONS_ENABLED'] = true;
 $config['NOTIFICATION_FROM_EMAIL'] = 'reviewlayer@example.com';
 $config['NOTIFICATION_ENCRYPTION_KEY'] = base64_encode(random_bytes(32));
+$unsafeConfig = $config;
+$unsafeConfig['NOTIFICATION_PUBLIC_BASE_URL'] = '';
+$hostHeaderRejected = false;
+try {
+    (new ReviewLayer\NativeMailService($unsafeConfig))->verificationUrl('test-token');
+} catch (ReviewLayer\NotificationException) {
+    $hostHeaderRejected = true;
+}
+notificationAssert($hostHeaderRejected, 'A Host header must not become a verification-link origin.');
+$config['NOTIFICATION_PUBLIC_BASE_URL'] = 'https://reviewlayer.example.com/reviewlayer/';
 
 try {
     $service = new NotificationService($temporary, $config);

@@ -15,29 +15,17 @@ final class NativeMailService
     {
         return (bool) ($this->config['NOTIFICATIONS_ENABLED'] ?? true)
             && function_exists('mail')
-            && $this->fromEmail() !== '';
+            && $this->fromEmail() !== ''
+            && $this->publicBaseUrl() !== '';
     }
 
     public function verificationUrl(string $token): string
     {
-        $configured = trim((string) ($this->config['NOTIFICATION_PUBLIC_BASE_URL'] ?? ''));
-        if ($configured !== '') {
-            $parts = parse_url($configured);
-            if (!is_array($parts) || !isset($parts['scheme'], $parts['host']) || !in_array(strtolower((string) $parts['scheme']), ['http', 'https'], true)) {
-                throw new NotificationException('NOTIFICATIONS_UNAVAILABLE', 'The notification public URL is invalid.');
-            }
-            $base = rtrim($configured, '/') . '/';
-            return $base . 'api/index.php?action=verify-email&token=' . rawurlencode($token);
+        $base = $this->publicBaseUrl();
+        if ($base === '') {
+            throw new NotificationException('NOTIFICATIONS_UNAVAILABLE', 'A trusted notification public URL is required.');
         }
-
-        $host = strtolower((string) ($_SERVER['HTTP_HOST'] ?? ''));
-        if ($host === '' || preg_match('/^[a-z0-9.\-:\[\]]+$/D', $host) !== 1) {
-            throw new NotificationException('NOTIFICATIONS_UNAVAILABLE', 'The notification host is unavailable.');
-        }
-        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-        $scriptName = (string) ($_SERVER['SCRIPT_NAME'] ?? '/reviewlayer/api/index.php');
-        $scriptName = '/' . ltrim(str_replace('\\', '/', $scriptName), '/');
-        return $scheme . '://' . $host . $scriptName . '?action=verify-email&token=' . rawurlencode($token);
+        return $base . 'api/index.php?action=verify-email&token=' . rawurlencode($token);
     }
 
     public function sendVerification(string $recipient, string $language, string $recipientName, string $verificationUrl, int $expiresMinutes): bool
@@ -145,11 +133,30 @@ final class NativeMailService
         if ($configured !== '') {
             return filter_var($configured, FILTER_VALIDATE_EMAIL) !== false ? $configured : '';
         }
-        $host = strtolower((string) ($_SERVER['HTTP_HOST'] ?? ''));
-        $host = preg_replace('/:\d+$/', '', $host) ?? '';
+        $parts = parse_url($this->publicBaseUrl());
+        $host = is_array($parts) ? strtolower((string) ($parts['host'] ?? '')) : '';
         $host = preg_replace('/^www\./', '', $host) ?? '';
         $derived = 'reviewlayer@' . $host;
         return filter_var($derived, FILTER_VALIDATE_EMAIL) !== false ? $derived : '';
+    }
+
+    private function publicBaseUrl(): string
+    {
+        $configured = trim((string) ($this->config['NOTIFICATION_PUBLIC_BASE_URL'] ?? ''));
+        if ($configured === '') {
+            return '';
+        }
+        $parts = parse_url($configured);
+        if (!is_array($parts)
+            || !isset($parts['scheme'], $parts['host'])
+            || !in_array(strtolower((string) $parts['scheme']), ['http', 'https'], true)
+            || isset($parts['user'])
+            || isset($parts['pass'])
+            || isset($parts['query'])
+            || isset($parts['fragment'])) {
+            return '';
+        }
+        return rtrim($configured, '/') . '/';
     }
 
     private function encodeHeader(string $value): string

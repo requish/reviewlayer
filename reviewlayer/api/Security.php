@@ -12,10 +12,13 @@ final class Security
     public function __construct(private readonly array $config)
     {
         if (session_status() !== PHP_SESSION_ACTIVE) {
+            ini_set('session.use_strict_mode', '1');
+            ini_set('session.use_only_cookies', '1');
             session_name('REVIEWLAYERSESSID');
             session_set_cookie_params([
                 'httponly' => true,
-                'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+                'secure' => (bool) ($this->config['FORCE_SECURE_SESSION_COOKIE'] ?? false)
+                    || (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
                 'samesite' => 'Lax',
                 'path' => '/',
             ]);
@@ -47,6 +50,7 @@ final class Security
         }
         $provided = $_SERVER['HTTP_X_REVIEWLAYER_ACCESS'] ?? '';
         if (!is_string($provided) || !$this->verifyConfiguredCode('PROJECT_ACCESS_CODE', 'PROJECT_ACCESS_CODE_HASH', $provided)) {
+            $this->rateLimit('project-access-failure', 'ACCESS_RATE_LIMIT_REQUESTS', 'ACCESS_RATE_LIMIT_WINDOW_SECONDS');
             throw new SecurityException('ACCESS_DENIED', 'Project access denied.');
         }
     }
@@ -54,9 +58,6 @@ final class Security
     public function assertAdmin(string $code): void
     {
         if (!$this->adminCodeConfigured()) {
-            if ($this->adminActionsEnabled()) {
-                return;
-            }
             throw new SecurityException('ACCESS_DENIED', 'Administrator actions are disabled until an administrator code is configured.');
         }
         if (!$this->verifyConfiguredCode('ADMIN_ACCESS_CODE', 'ADMIN_ACCESS_CODE_HASH', $code)) {
@@ -66,7 +67,7 @@ final class Security
 
     public function adminActionsEnabled(): bool
     {
-        return $this->adminCodeConfigured() || (bool) ($this->config['ALLOW_ADMIN_WITHOUT_CODE'] ?? true);
+        return $this->adminCodeConfigured();
     }
 
     public function adminCodeConfigured(): bool
@@ -82,9 +83,6 @@ final class Security
     public function canDeletePin(array $pin, string $authorId, string $adminCode): bool
     {
         if (!$this->adminCodeConfigured()) {
-            if ((bool) ($this->config['ALLOW_ADMIN_WITHOUT_CODE'] ?? true)) {
-                return true;
-            }
             return (bool) $this->config['ALLOW_AUTHOR_DELETE_OWN_PINS']
                 && isset($pin['author_id'])
                 && hash_equals((string) $pin['author_id'], $authorId);
@@ -107,11 +105,15 @@ final class Security
             && hash_equals((string) $message['author_id'], $authorId);
     }
 
-    public function rateLimit(string $bucket): void
+    public function rateLimit(
+        string $bucket,
+        string $limitKey = 'RATE_LIMIT_REQUESTS',
+        string $windowKey = 'RATE_LIMIT_WINDOW_SECONDS'
+    ): void
     {
         $now = time();
-        $window = (int) $this->config['RATE_LIMIT_WINDOW_SECONDS'];
-        $limit = (int) $this->config['RATE_LIMIT_REQUESTS'];
+        $window = (int) ($this->config[$windowKey] ?? 0);
+        $limit = (int) ($this->config[$limitKey] ?? 0);
         if ($limit <= 0 || $window <= 0) {
             return;
         }
@@ -134,7 +136,9 @@ final class Security
 
     private function persistentRateLimit(string $bucket, int $now, int $window, int $limit): void
     {
-        $path = dirname(__DIR__) . '/data/.rate-limits.json';
+        $configuredDirectory = trim((string) ($this->config['DATA_DIRECTORY'] ?? ''));
+        $dataDirectory = $configuredDirectory !== '' ? rtrim($configuredDirectory, "\\/ ") : dirname(__DIR__) . '/data';
+        $path = $dataDirectory . '/.rate-limits.json';
         $handle = fopen($path, 'c+');
         if ($handle === false) {
             throw new RuntimeException('Unable to open the rate-limit store.');
@@ -146,36 +150,54 @@ final class Security
             }
             rewind($handle);
             $raw = stream_get_contents($handle);
-            $data = is_string($raw) && $raw !== '' ? json_decode($raw, true) : [];
-            if (!is_array($data)) {
-                $data = [];
+            $data = [];
+            if (is_string($raw) && $raw !== '') {
+                try {
+                    $decoded = json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
+                } catch (\JsonException $error) {
+                    throw new RuntimeException('The rate-limit store is corrupt.', 0, $error);
+                }
+                if (!is_array($decoded) || array_is_list($decoded)) {
+                    throw new RuntimeException('The rate-limit store is invalid.');
+                }
+                $data = $decoded;
             }
 
-            $cutoff = $now - $window;
-            foreach ($data as $key => $timestamps) {
-                if (!is_array($timestamps)) {
-                    unset($data[$key]);
-                    continue;
+            foreach ($data as $storedKey => $entry) {
+                if (is_array($entry) && array_is_list($entry)) {
+                    $entry = ['window' => $window, 'timestamps' => $entry];
                 }
+                if (!is_array($entry) || !isset($entry['timestamps']) || !is_array($entry['timestamps'])) {
+                    throw new RuntimeException('The rate-limit store contains an invalid bucket.');
+                }
+                $entryWindow = max(1, min(604800, (int) ($entry['window'] ?? $window)));
+                $cutoff = $now - $entryWindow;
                 $timestamps = array_values(array_filter(
-                    $timestamps,
+                    $entry['timestamps'],
                     static fn (mixed $timestamp): bool => is_int($timestamp) && $timestamp > $cutoff
                 ));
                 if ($timestamps === []) {
-                    unset($data[$key]);
+                    unset($data[$storedKey]);
                 } else {
-                    $data[$key] = $timestamps;
+                    $data[$storedKey] = ['window' => $entryWindow, 'timestamps' => $timestamps];
                 }
             }
 
             $remoteAddress = (string) ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
             $key = hash('sha256', $remoteAddress . '|' . $bucket);
-            $attempts = isset($data[$key]) && is_array($data[$key]) ? $data[$key] : [];
+            $maxBuckets = (int) ($this->config['RATE_LIMIT_MAX_BUCKETS'] ?? 5000);
+            $maxBuckets = $maxBuckets > 0 ? $maxBuckets : 5000;
+            if (!isset($data[$key]) && count($data) >= $maxBuckets) {
+                throw new SecurityException('RATE_LIMITED', 'Too many requests.');
+            }
+            $attempts = isset($data[$key]['timestamps']) && is_array($data[$key]['timestamps'])
+                ? $data[$key]['timestamps']
+                : [];
             if (count($attempts) >= $limit) {
                 throw new SecurityException('RATE_LIMITED', 'Too many requests.');
             }
             $attempts[] = $now;
-            $data[$key] = $attempts;
+            $data[$key] = ['window' => $window, 'timestamps' => $attempts];
 
             $encoded = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
             rewind($handle);

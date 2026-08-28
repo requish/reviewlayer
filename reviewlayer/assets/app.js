@@ -1534,6 +1534,9 @@ class ReviewLayerApp {
 
     try {
       const targetUrl = createCompatiblePinUrl(pin.page_url);
+      if (targetUrl.origin !== window.location.origin) {
+        throw new Error('Cross-origin pin navigation denied.');
+      }
       if (createNavigationPageKey(targetUrl) === createNavigationPageKey(window.location)) {
         this.openConversation(pin.id, false, true);
         return;

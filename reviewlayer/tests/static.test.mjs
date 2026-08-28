@@ -211,7 +211,7 @@ test('single-pin deletion uses DEL while bulk deletion keeps DELETE', async () =
   assert.match(api, /\$expectedConfirmation = \$scope === 'all_projects' \? 'DELETE ALL REVIEWLAYER DATA' : 'DELETE'/);
 });
 
-test('admin code is optional when it is not configured', async () => {
+test('administrator actions fail closed when no code is configured', async () => {
   const [app, api, security] = await Promise.all([
     read('assets/app.js'),
     read('api/index.php'),
@@ -220,7 +220,41 @@ test('admin code is optional when it is not configured', async () => {
   assert.match(api, /'admin_code_configured' => \$security->adminCodeConfigured\(\)/);
   assert.match(api, /\$security->adminCodeConfigured\(\)[\s\S]*\? Validation::string[\s\S]*: ''/);
   assert.match(app, /this\.bootstrapData\?\.admin_code_configured === false[\s\S]*\? ''/);
-  assert.match(security, /adminActionsEnabled\(\)[\s\S]*ALLOW_ADMIN_WITHOUT_CODE/);
+  assert.match(security, /adminActionsEnabled\(\): bool[\s\S]*return \$this->adminCodeConfigured\(\)/);
+  assert.match(security, /Administrator actions are disabled until an administrator code is configured/);
+  assert.doesNotMatch(security, /ALLOW_ADMIN_WITHOUT_CODE/);
+});
+
+test('portable runtime enforces the shared security boundaries', async () => {
+  const [bootstrap, validation, security, mail, api, anchor, app, accessRules] = await Promise.all([
+    read('api/bootstrap.php'),
+    read('api/Validation.php'),
+    read('api/Security.php'),
+    read('api/NativeMailService.php'),
+    read('api/index.php'),
+    read('assets/anchor.js'),
+    read('assets/app.js'),
+    read('.htaccess')
+  ]);
+  assert.match(bootstrap, /'PERSISTENT_RATE_LIMIT' => true/);
+  assert.match(bootstrap, /function dataDirectory/);
+  assert.match(bootstrap, /'ALLOWED_PAGE_HOSTS' => \[\]/);
+  assert.match(validation, /assertTrustedRequestHost[\s\S]*The request Host is not trusted/);
+  assert.match(validation, /pageUrlForRequest[\s\S]*relativePageReference/);
+  assert.match(api, /Validation::assertTrustedRequestHost\(\$config\)/);
+  assert.match(validation, /function selector[\s\S]*unsupported selector form/);
+  assert.match(api, /empty fingerprint attribute object is valid[\s\S]*\$attributes !== \[\]/);
+  assert.match(security, /project-access-failure/);
+  assert.match(security, /RATE_LIMIT_MAX_BUCKETS/);
+  assert.match(mail, /A trusted notification public URL is required/);
+  assert.doesNotMatch(mail, /HTTP_HOST/);
+  assert.match(api, /\$supportedActions = \[/);
+  assert.match(api, /daily:create-pin[\s\S]*CREATE_PIN_DAILY_LIMIT/);
+  assert.match(api, /daily:add-message[\s\S]*ADD_MESSAGE_DAILY_LIMIT/);
+  assert.doesNotMatch(anchor, /\[\.\.\.document\.querySelectorAll\(pin\.target_selector\)\]/);
+  assert.match(anchor, /getElementsByTagName\(fingerprint\.tag\)/);
+  assert.match(app, /targetUrl\.origin !== window\.location\.origin/);
+  assert.match(accessRules, /FilesMatch[\s\S]*X-Robots-Tag[\s\S]*Content-Security-Policy/);
 });
 
 test('settings expose a separate manual backup action', async () => {
@@ -234,7 +268,7 @@ test('settings expose a separate manual backup action', async () => {
   assert.match(app, /this\.api\.createBackup/);
   assert.match(client, /createBackup\(body, signal\)/);
   assert.match(api, /\$action === 'create-backup'/);
-  assert.match(api, /new BackupService\(dirname\(__DIR__\) \. '\/data\/backups', \(int\) \$config\['MAX_BACKUPS'\]\)/);
+  assert.match(api, /new BackupService\(\$dataDirectory \. '\/backups', \(int\) \$config\['MAX_BACKUPS'\]\)/);
   assert.match(css, /\.rl-settings-section/);
   assert.match(app, /admin_actions_enabled === false/);
 });

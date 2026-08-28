@@ -14,8 +14,10 @@ if ($argc !== 2 || preg_match('/^reviewlayer-backup-[a-zA-Z0-9T.-]+\.json$/D', (
     exit(2);
 }
 
-$backupDirectory = realpath(dirname(__DIR__) . '/data/backups');
-$backupPath = realpath(dirname(__DIR__) . '/data/backups/' . basename((string) $argv[1]));
+$config = ReviewLayer\loadConfig();
+$dataDirectory = ReviewLayer\dataDirectory($config);
+$backupDirectory = realpath($dataDirectory . '/backups');
+$backupPath = realpath($dataDirectory . '/backups/' . basename((string) $argv[1]));
 if ($backupDirectory === false || $backupPath === false || !str_starts_with($backupPath, $backupDirectory . DIRECTORY_SEPARATOR)) {
     fwrite(STDERR, "Backup file was not found in data/backups.\n");
     exit(2);
@@ -29,7 +31,7 @@ try {
     if (!is_array($backup) || $formatVersion < 1 || $formatVersion > 4) {
         throw new RuntimeException('Unsupported backup format.');
     }
-    $storage = ReviewLayer\createStorage(ReviewLayer\loadConfig());
+    $storage = ReviewLayer\createStorage($config);
     $storage->restoreAll($backup);
     fwrite(STDOUT, "ReviewLayer backup restored successfully.\n");
 } catch (Throwable $error) {

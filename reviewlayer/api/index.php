@@ -52,11 +52,9 @@ function sanitizeAnchor(array $value): array
         if (!is_array($fallback)) {
             throw new InvalidArgumentException('anchor.fallback_ancestors.' . $index . ' is invalid.');
         }
-        $selector = Validation::string(
+        $selector = Validation::selector(
             $fallback['selector'] ?? null,
-            'anchor.fallback_ancestors.' . $index . '.selector',
-            1,
-            2048
+            'anchor.fallback_ancestors.' . $index . '.selector'
         );
         foreach (['offset_x', 'offset_y'] as $field) {
             if (!isset($fallback[$field]) || !is_numeric($fallback[$field]) || !is_finite((float) $fallback[$field])) {
@@ -99,11 +97,10 @@ function sanitizeAnchor(array $value): array
             }
         }
         $output['interaction_trigger'] = [
-            'selector' => Validation::string($trigger['selector'] ?? null, 'anchor.interaction_trigger.selector', 1, 2048),
-            'target_fingerprint' => Validation::object(
-                $trigger['target_fingerprint'] ?? null,
-                'anchor.interaction_trigger.target_fingerprint',
-                8192
+            'selector' => Validation::selector($trigger['selector'] ?? null, 'anchor.interaction_trigger.selector'),
+            'target_fingerprint' => sanitizeFingerprint(
+                Validation::object($trigger['target_fingerprint'] ?? null, 'anchor.interaction_trigger.target_fingerprint', 8192),
+                'anchor.interaction_trigger.target_fingerprint'
             ),
             'relative_x' => $relative['relative_x'],
             'relative_y' => $relative['relative_y'],
@@ -149,6 +146,75 @@ function sanitizeBrowser(array $value): array
         ? Validation::object($value['user_agent_data'], 'browser.user_agent_data', 8192)
         : null;
     return $result;
+}
+
+/** @param array<string, mixed> $value @return array<string, mixed> */
+function sanitizeFingerprint(array $value, string $field = 'target_fingerprint'): array
+{
+    $tag = Validation::string($value['tag'] ?? null, $field . '.tag', 1, 64);
+    if (preg_match('/^[a-z][a-z0-9-]{0,63}$/Di', $tag) !== 1) {
+        throw new InvalidArgumentException($field . '.tag is invalid.');
+    }
+    $classes = $value['classes'] ?? [];
+    if (!is_array($classes) || !array_is_list($classes) || count($classes) > 3) {
+        throw new InvalidArgumentException($field . '.classes is invalid.');
+    }
+    $attributes = $value['attributes'] ?? [];
+    // json_decode(..., true) represents both an empty JSON object and an empty
+    // JSON array as []; an empty fingerprint attribute object is valid.
+    if (!is_array($attributes) || ($attributes !== [] && array_is_list($attributes))) {
+        throw new InvalidArgumentException($field . '.attributes is invalid.');
+    }
+    $allowedAttributes = ['data-review-id', 'data-testid', 'data-test', 'data-cy', 'data-component', 'name', 'aria-label', 'role', 'type'];
+    $safeAttributes = [];
+    foreach ($attributes as $name => $attributeValue) {
+        if (!is_string($name) || !in_array($name, $allowedAttributes, true)) {
+            throw new InvalidArgumentException($field . '.attributes contains an unsupported name.');
+        }
+        $safeAttributes[$name] = Validation::string($attributeValue, $field . '.attributes.' . $name, 1, 160);
+    }
+    $siblingIndex = $value['sibling_index'] ?? 0;
+    if (!is_int($siblingIndex) || $siblingIndex < 0 || $siblingIndex > 100000) {
+        throw new InvalidArgumentException($field . '.sibling_index is invalid.');
+    }
+    $ancestors = $value['ancestors'] ?? [];
+    if (!is_array($ancestors) || !array_is_list($ancestors) || count($ancestors) > 3) {
+        throw new InvalidArgumentException($field . '.ancestors is invalid.');
+    }
+    $safeAncestors = [];
+    foreach ($ancestors as $index => $ancestor) {
+        if (!is_array($ancestor) || array_is_list($ancestor)) {
+            throw new InvalidArgumentException($field . '.ancestors.' . $index . ' is invalid.');
+        }
+        $ancestorTag = Validation::string($ancestor['tag'] ?? null, $field . '.ancestors.' . $index . '.tag', 1, 64);
+        if (preg_match('/^[a-z][a-z0-9-]{0,63}$/Di', $ancestorTag) !== 1) {
+            throw new InvalidArgumentException($field . '.ancestors.' . $index . '.tag is invalid.');
+        }
+        $ancestorClasses = $ancestor['classes'] ?? [];
+        if (!is_array($ancestorClasses) || !array_is_list($ancestorClasses) || count($ancestorClasses) > 3) {
+            throw new InvalidArgumentException($field . '.ancestors.' . $index . '.classes is invalid.');
+        }
+        $safeAncestors[] = [
+            'tag' => strtolower($ancestorTag),
+            'id' => Validation::string((string) ($ancestor['id'] ?? ''), $field . '.ancestors.' . $index . '.id', 0, 256),
+            'classes' => array_map(
+                static fn (mixed $className): string => Validation::string($className, 'fingerprint ancestor class', 1, 64),
+                $ancestorClasses
+            ),
+        ];
+    }
+    return [
+        'tag' => strtolower($tag),
+        'id' => Validation::string((string) ($value['id'] ?? ''), $field . '.id', 0, 256),
+        'classes' => array_map(
+            static fn (mixed $className): string => Validation::string($className, 'fingerprint class', 1, 64),
+            $classes
+        ),
+        'attributes' => $safeAttributes,
+        'text' => Validation::string((string) ($value['text'] ?? ''), $field . '.text', 0, 160),
+        'sibling_index' => $siblingIndex,
+        'ancestors' => $safeAncestors,
+    ];
 }
 
 /** @param array<string, mixed> $message @return array<string, mixed> */
@@ -217,16 +283,31 @@ function respondVerificationPage(bool $success, string $language, bool $linked =
 
 try {
     $config = ReviewLayer\loadConfig();
+    Validation::assertTrustedRequestHost($config);
+    $dataDirectory = ReviewLayer\dataDirectory($config);
     $storage = ReviewLayer\createStorage($config);
     $security = new Security($config);
     $usageLimits = new UsageLimits($storage, $config);
-    $notifications = new NotificationService(dirname(__DIR__) . '/data', $config);
+    $notifications = new NotificationService($dataDirectory, $config);
     try {
         $notifications->synchronizeLinkedAuthors($storage);
     } catch (Throwable $error) {
         error_log('[ReviewLayer] Deferred author synchronization: ' . $error->getMessage());
     }
     $action = isset($_GET['action']) && is_string($_GET['action']) ? $_GET['action'] : 'health';
+    $supportedActions = [
+        'health', 'bootstrap', 'verify-email', 'list-pins', 'list-project-pins', 'list-project-users', 'get-pin',
+        'notification-settings', 'get-user-profile', 'update-user-role', 'request-email-verification',
+        'remove-notification-email', 'list-notification-recipients', 'send-notification', 'send-role-notification',
+        'create-pin', 'add-message', 'update-status', 'update-pin-audience', 'delete-pin', 'delete-message',
+        'create-backup', 'admin-clear',
+    ];
+    if (!in_array($action, $supportedActions, true)) {
+        ReviewLayer\respond(false, null, ['code' => 'NOT_FOUND', 'message' => 'API action not found.'], 404);
+    }
+    if (in_array($action, ['health', 'bootstrap', 'verify-email', 'list-pins', 'list-project-pins', 'list-project-users', 'get-pin'], true)) {
+        $security->rateLimit('read:' . $action, 'READ_RATE_LIMIT_REQUESTS', 'READ_RATE_LIMIT_WINDOW_SECONDS');
+    }
 
     if ($action === 'health') {
         ReviewLayer\requireMethod('GET');
@@ -234,7 +315,7 @@ try {
             'version' => ReviewLayer\REVIEWLAYER_VERSION,
             'status' => 'ok',
             'storage' => $storage->mode(),
-            'php_version' => PHP_VERSION,
+            'php_version' => PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION,
         ], null);
     }
 
@@ -275,7 +356,7 @@ try {
     if ($action === 'list-pins') {
         ReviewLayer\requireMethod('GET');
         $projectKey = Validation::projectKey($_GET['project_key'] ?? null);
-        $context = Validation::pageContext($_GET['page_key'] ?? null, $_GET['page_url'] ?? null);
+        $context = Validation::pageContext($_GET['page_key'] ?? null, $_GET['page_url'] ?? null, $config);
         ReviewLayer\respond(true, ['pins' => array_map('publicPin', $storage->listPins($projectKey, $context['page_key']))], null);
     }
 
@@ -306,6 +387,9 @@ try {
     $security->assertCsrf();
     $security->rateLimit($action);
     $body = ReviewLayer\jsonBody();
+    if (in_array($action, ['create-backup', 'admin-clear'], true)) {
+        $security->rateLimit('admin:' . $action, 'ADMIN_RATE_LIMIT_REQUESTS', 'ADMIN_RATE_LIMIT_WINDOW_SECONDS');
+    }
 
     if ($action === 'notification-settings') {
         ReviewLayer\requireMethod('POST');
@@ -397,7 +481,7 @@ try {
             Validation::browserSecret($body['author_secret'] ?? null),
             Validation::oneOf($body['language'] ?? null, 'language', ['pl', 'en']),
             Validation::uuid($body['recipient_id'] ?? null, 'recipient_id'),
-            Validation::pageUrl($body['page_url'] ?? null)
+            Validation::pageUrlForRequest($body['page_url'] ?? null, $config)
         );
         ReviewLayer\respond(true, ['sent' => true], null);
     }
@@ -411,7 +495,7 @@ try {
             Validation::browserSecret($body['author_secret'] ?? null),
             Validation::oneOf($body['language'] ?? null, 'language', ['pl', 'en']),
             Validation::audienceRole($body['audience_role'] ?? null),
-            Validation::pageUrl($body['page_url'] ?? null)
+            Validation::pageUrlForRequest($body['page_url'] ?? null, $config)
         );
         ReviewLayer\respond(true, ['sent' => $sent], null);
     }
@@ -419,7 +503,7 @@ try {
     if ($action === 'create-pin') {
         ReviewLayer\requireMethod('POST');
         $projectKey = Validation::projectKey($body['project_key'] ?? null);
-        $context = Validation::pageContext($body['page_key'] ?? null, $body['page_url'] ?? null);
+        $context = Validation::pageContext($body['page_key'] ?? null, $body['page_url'] ?? null, $config);
         $identity = canonicalAuthorIdentity(
             $notifications,
             $storage,
@@ -429,9 +513,10 @@ try {
         );
         $authorId = $identity['author_id'];
         $authorName = $identity['author_name'];
+        $security->rateLimit('daily:create-pin', 'CREATE_PIN_DAILY_LIMIT', 'DAILY_RATE_LIMIT_WINDOW_SECONDS');
         $usageLimits->assertCanCreatePin($projectKey, $authorId);
         $messageText = Validation::string($body['message'] ?? null, 'message', 1, (int) $config['MAX_MESSAGE_LENGTH']);
-        $fingerprint = Validation::object($body['target_fingerprint'] ?? null, 'target_fingerprint');
+        $fingerprint = sanitizeFingerprint(Validation::object($body['target_fingerprint'] ?? null, 'target_fingerprint'));
         $anchor = sanitizeAnchor(Validation::object($body['anchor'] ?? null, 'anchor'));
         $viewport = sanitizeViewport(Validation::object($body['viewport'] ?? null, 'viewport'), $config);
         $browser = sanitizeBrowser(Validation::object($body['browser'] ?? null, 'browser'));
@@ -447,7 +532,7 @@ try {
             'author_name' => $authorName,
             'author_role_key' => Validation::roleKey((string) ($body['role_key'] ?? 'unassigned')),
             'audience_role' => Validation::audienceRole((string) ($body['audience_role'] ?? 'all')),
-            'target_selector' => Validation::string($body['target_selector'] ?? null, 'target_selector', 1, 2048),
+            'target_selector' => Validation::selector($body['target_selector'] ?? null, 'target_selector'),
             'target_fingerprint' => $fingerprint,
             'anchor' => $anchor,
             'viewport' => $viewport,
@@ -473,6 +558,7 @@ try {
         ReviewLayer\requireMethod('POST');
         $projectKey = Validation::projectKey($body['project_key'] ?? null);
         $pinId = Validation::uuid($_GET['id'] ?? null);
+        $security->rateLimit('daily:add-message', 'ADD_MESSAGE_DAILY_LIMIT', 'DAILY_RATE_LIMIT_WINDOW_SECONDS');
         $usageLimits->assertCanAddMessage($pinId);
         $identity = canonicalAuthorIdentity(
             $notifications,
@@ -577,7 +663,7 @@ try {
         $security->assertAdmin($adminCode);
         $projectKey = Validation::projectKey($body['project_key'] ?? null);
         try {
-            $backupFile = (new BackupService(dirname(__DIR__) . '/data/backups', (int) $config['MAX_BACKUPS']))->create($storage);
+            $backupFile = (new BackupService($dataDirectory . '/backups', (int) $config['MAX_BACKUPS']))->create($storage);
         } catch (Throwable $error) {
             throw new BackupException('Manual backup creation failed.', 0, $error);
         }
@@ -612,10 +698,10 @@ try {
             : '';
         $security->assertAdmin($adminCode);
         $projectKey = Validation::projectKey($body['project_key'] ?? null);
-        $context = Validation::pageContext($body['page_key'] ?? null, $body['page_url'] ?? null);
+        $context = Validation::pageContext($body['page_key'] ?? null, $body['page_url'] ?? null, $config);
         $service = new ClearService(
             $storage,
-            new BackupService(dirname(__DIR__) . '/data/backups', (int) $config['MAX_BACKUPS']),
+            new BackupService($dataDirectory . '/backups', (int) $config['MAX_BACKUPS']),
             $config
         );
         $result = $service->execute(

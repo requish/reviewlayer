@@ -41,25 +41,17 @@ $securityWithoutAdmin = new Security($configWithoutAdmin);
 if ($securityWithoutAdmin->adminCodeConfigured()) {
     throw new RuntimeException('An empty administrator code was reported as configured.');
 }
-$securityWithoutAdmin->assertAdmin('');
-if (!$securityWithoutAdmin->canDeletePin($foreignPin, 'author-two', '')) {
-    throw new RuntimeException('A single pin was not deletable while no administrator code was configured.');
-}
-
-$strictConfig = $configWithoutAdmin;
-$strictConfig['ALLOW_ADMIN_WITHOUT_CODE'] = false;
-$strictSecurity = new Security($strictConfig);
-$strictRejected = false;
+$unconfiguredRejected = false;
 try {
-    $strictSecurity->assertAdmin('');
+    $securityWithoutAdmin->assertAdmin('');
 } catch (SecurityException) {
-    $strictRejected = true;
+    $unconfiguredRejected = true;
 }
-if (!$strictRejected || $strictSecurity->canDeletePin($foreignPin, 'author-two', '')) {
-    throw new RuntimeException('Strict demo mode did not disable unconfigured administrator actions.');
+if (!$unconfiguredRejected || $securityWithoutAdmin->canDeletePin($foreignPin, 'author-two', '')) {
+    throw new RuntimeException('Unconfigured administrator actions were not disabled.');
 }
-if (!$strictSecurity->canDeletePin($foreignPin, 'author-one', '')) {
-    throw new RuntimeException('Strict demo mode did not allow the author to delete their own pin.');
+if (!$securityWithoutAdmin->canDeletePin($foreignPin, 'author-one', '')) {
+    throw new RuntimeException('The author could not delete their own pin while administrator actions were disabled.');
 }
 
 $rejected = false;

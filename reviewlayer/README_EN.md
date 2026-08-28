@@ -4,7 +4,7 @@ ReviewLayer 1.4.1 is an independent annotation overlay for website prototypes. C
 
 ## Server requirements
 
-- PHP 8.0 or newer.
+- PHP 8.1 or newer.
 - `reviewlayer/data/` and `reviewlayer/data/backups/` writable by PHP.
 - PDO SQLite is recommended. If `pdo_sqlite` is missing, the app automatically selects JSON with `flock` and atomic file replacement.
 - The page and ReviewLayer directory should share one origin. Cross-origin installation needs custom CORS and cookie configuration, intentionally disabled by default.
@@ -59,19 +59,21 @@ Shared files `assets/i18n/pl.json` and `assets/i18n/en.json` supply copy for bot
 `config.php` returns a PHP array. Important options:
 
 - `PROJECT_ACCESS_CODE` — optional project code, used when `ALLOW_GUESTS` is `false`.
-- `ADMIN_ACCESS_CODE` — optional code for backups, clearing, and administrative deletion. `ALLOW_ADMIN_WITHOUT_CODE` controls behavior when no code exists; authors may still delete their own entries when the corresponding options are enabled.
+- `ADMIN_ACCESS_CODE` — required for backups, clearing, and administrative deletion. Without it those actions are disabled; authors may still delete their own entries when the corresponding options are enabled.
 - `ALLOW_GUESTS` — access without a project code.
 - `ALLOW_AUTHOR_DELETE_OWN_MESSAGES` and `ALLOW_AUTHOR_DELETE_OWN_PINS` — soft deletion of own data.
-- `ALLOW_ADMIN_WITHOUT_CODE` — when `false`, backups and administrative clearing remain disabled until an administrator code is configured.
 - `CREATE_BACKUP_BEFORE_PURGE` — automatic export before permanent clearing.
+- `ALLOWED_PROJECT_KEYS` — optional allowlist for `data-project`; an empty list accepts every valid project key.
+- `ALLOWED_PAGE_HOSTS` — optional trusted hostname allowlist. When set, unknown request hosts are rejected before a session starts. `NOTIFICATION_PUBLIC_BASE_URL` automatically contributes its hostname.
+- `REQUIRE_SAME_HOST_PAGE_URL` — keeps absolute navigation and notification links on trusted hosts. With the safe default `true` and no configured host, portable copy-and-run mode stores only the path/query/fragment, so an untrusted `Host` value is never persisted.
+- `DATA_DIRECTORY` — optional absolute private storage path outside the public document root. Empty keeps the copy-and-run `data/` directory.
 - `STORAGE_MODE` — `auto`, `sqlite`, or `json`.
 - `MOBILE_BREAKPOINT` and `DESKTOP_BREAKPOINT` — 600 and 1024 px by default.
-- `PERSISTENT_RATE_LIMIT` — persistent request limiting by hashed IP address, resistant to opening new sessions.
-- `MAX_PINS_PER_AUTHOR`, `MAX_MESSAGES_PER_PIN`, `MAX_TOTAL_PINS`, and `MAX_TOTAL_MESSAGES` — optional demo limits; `0` disables a limit.
-- `MAX_BACKUPS` — maximum retained backup count; `0` disables automatic pruning.
+- `PERSISTENT_RATE_LIMIT` — persistent request limiting by hashed IP address, resistant to opening new sessions; enabled by default.
+- daily, per-author, per-pin, total and backup limits — conservative finite defaults prevent unbounded anonymous storage use and can be adjusted for a larger installation.
 - `NOTIFICATIONS_ENABLED` — enables manual email notifications. Messages use the server's native PHP `mail()` transport; ReviewLayer stores no SMTP credentials.
-- `NOTIFICATION_FROM_EMAIL` — optional fixed sender. When empty, ReviewLayer derives `reviewlayer@current-host`; set an existing same-domain address if required by the hosting mail policy.
-- `NOTIFICATION_PUBLIC_BASE_URL` — optional absolute ReviewLayer directory URL for verification links. Leave empty for same-origin copies installed on different prototype domains.
+- `NOTIFICATION_FROM_EMAIL` — optional fixed sender. When empty, ReviewLayer derives the sender domain from `NOTIFICATION_PUBLIC_BASE_URL`; set an existing same-domain address if required by the hosting mail policy.
+- `NOTIFICATION_PUBLIC_BASE_URL` — trusted absolute ReviewLayer directory URL used in verification links. Email notifications remain unavailable while it is empty; pins and comments continue to work without it.
 - notification and verification cooldown/hourly/daily options — persistent abuse limits independent from browser sessions.
 - text limits and the rate-limit window.
 
@@ -152,7 +154,7 @@ Regular pin or message deletion sets `deleted_at` (soft delete). A single pin re
 https://prototype.example.com/?reviewlayer=clear
 ```
 
-The GET request never deletes data. The panel requires scope, mode, and `DELETE`; the administrator code is required only when configured. The entire installation requires the exact phrase `DELETE ALL REVIEWLAYER DATA`. Closing removes the technical parameter from the address.
+The GET request never deletes data. The panel requires scope, mode, `DELETE`, and a configured administrator code. The entire installation requires the exact phrase `DELETE ALL REVIEWLAYER DATA`. Closing removes the technical parameter from the address.
 
 Scopes:
 
@@ -165,7 +167,7 @@ Soft delete retains history. Permanent purge physically removes records. Purging
 
 ## Backup and restore
 
-Settings contains a separate “Backup” section. “Create backup now” writes a complete export of every project into `data/backups/` without deleting or changing data. If an administrator code is configured, the app asks for it before creating the backup.
+Settings contains a separate “Backup” section. “Create backup now” writes a complete export of every project into `data/backups/` without deleting or changing data. The action is enabled only after an administrator code is configured.
 
 With `CREATE_BACKUP_BEFORE_PURGE = true`, permanent clearing first writes portable JSON into `data/backups/`. It includes format version, projects and counters, commenter roles and colors, pin audiences, pins, messages, statuses, dates, anchor, viewport, and browser data. Notification contacts are excluded because they require the installation-specific encryption key. A backup failure blocks purge unless the administrator explicitly chooses to continue without it.
 
@@ -185,7 +187,7 @@ Without SQLite it uses `data/reviewlayer.json`, a separate lock file, and `data/
 
 ## Data protection
 
-Included `.htaccess` files disable listing and deny downloads from `data/` and backups. Reproduce the rule in Nginx/IIS, for example by returning `403` for `/reviewlayer/data/`. Verify externally with a harmless test filename; its response must not expose contents.
+Included `.htaccess` files disable listing and deny downloads from `data/` and backups. Reproduce the rule in Nginx/IIS, for example by returning `403` for `/reviewlayer/data/`. For the strongest server-independent layout, set `DATA_DIRECTORY` to a writable absolute directory outside the document root; storage, notifications, rate limits, backups, restore and demo cleanup use the same resolved path. Verify externally with a harmless test filename; its response must not expose contents.
 
 The API applies validation, prepared statements, UUID v4, limits, session CSRF, Origin checks, rate limiting, soft delete, constant-time code comparison through `hash_equals`, and consistent JSON responses. These safeguards fit prototype review; they do not replace a complete account and audit system for sensitive data. `noindex, nofollow` limits indexing but is not access control.
 

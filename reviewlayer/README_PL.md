@@ -4,7 +4,7 @@ ReviewLayer 1.4.1 to niezależna nakładka do komentowania prototypów stron. Kl
 
 ## Wymagania serwera
 
-- PHP 8.0 lub nowszy.
+- PHP 8.1 lub nowszy.
 - Zapisywalny przez PHP katalog `reviewlayer/data/` i `reviewlayer/data/backups/`.
 - Zalecane PDO SQLite. Gdy `pdo_sqlite` nie istnieje, aplikacja automatycznie wybiera JSON z `flock` i atomową podmianą pliku.
 - Ta sama domena dla strony i katalogu ReviewLayer. Instalacja cross-origin wymagałaby własnej konfiguracji CORS i cookies, której wersja domyślna celowo nie włącza.
@@ -59,19 +59,21 @@ Wspólne pliki `assets/i18n/pl.json` i `assets/i18n/en.json` zawierają teksty n
 `config.php` zwraca tablicę PHP. Najważniejsze opcje:
 
 - `PROJECT_ACCESS_CODE` — opcjonalny kod projektu; używany, gdy `ALLOW_GUESTS` wynosi `false`.
-- `ADMIN_ACCESS_CODE` — opcjonalny kod do kopii, czyszczenia i administracyjnego usuwania. Zachowanie bez kodu określa `ALLOW_ADMIN_WITHOUT_CODE`; autor nadal może usuwać własne wpisy, jeśli odpowiednie opcje są włączone.
+- `ADMIN_ACCESS_CODE` — wymagany do kopii, czyszczenia i administracyjnego usuwania. Bez niego te operacje są wyłączone; autor nadal może usuwać własne wpisy, jeśli odpowiednie opcje są włączone.
 - `ALLOW_GUESTS` — dostęp bez kodu projektu.
 - `ALLOW_AUTHOR_DELETE_OWN_MESSAGES` i `ALLOW_AUTHOR_DELETE_OWN_PINS` — soft delete własnych danych.
-- `ALLOW_ADMIN_WITHOUT_CODE` — gdy `false`, kopie i czyszczenie administracyjne pozostają wyłączone do czasu ustawienia kodu administratora.
 - `CREATE_BACKUP_BEFORE_PURGE` — automatyczny eksport przed trwałym czyszczeniem.
+- `ALLOWED_PROJECT_KEYS` — opcjonalna lista dozwolonych wartości `data-project`; pusta akceptuje każdy poprawny klucz projektu.
+- `ALLOWED_PAGE_HOSTS` — opcjonalna lista zaufanych nazw hostów. Po jej ustawieniu obcy host żądania jest odrzucany przed utworzeniem sesji. Host z `NOTIFICATION_PUBLIC_BASE_URL` jest dodawany automatycznie.
+- `REQUIRE_SAME_HOST_PAGE_URL` — ogranicza bezwzględne linki nawigacji i powiadomień do zaufanych hostów. Przy bezpiecznej wartości `true` i pustej liście hostów przenośny tryb copy-and-run zapisuje tylko ścieżkę, query i fragment, więc niezaufany `Host` nie trafia do danych.
+- `DATA_DIRECTORY` — opcjonalna bezwzględna ścieżka prywatnego magazynu poza katalogiem publicznym. Pusta zachowuje prosty katalog `data/` działający po skopiowaniu.
 - `STORAGE_MODE` — `auto`, `sqlite` albo `json`.
 - `MOBILE_BREAKPOINT` i `DESKTOP_BREAKPOINT` — domyślnie 600 i 1024 px.
-- `PERSISTENT_RATE_LIMIT` — trwały limit żądań według skrótu adresu IP, odporny na otwieranie nowych sesji.
-- `MAX_PINS_PER_AUTHOR`, `MAX_MESSAGES_PER_PIN`, `MAX_TOTAL_PINS` i `MAX_TOTAL_MESSAGES` — opcjonalne limity demo; `0` wyłącza dany limit.
-- `MAX_BACKUPS` — maksymalna liczba zachowanych kopii; `0` oznacza brak automatycznego usuwania.
+- `PERSISTENT_RATE_LIMIT` — trwały limit żądań według skrótu adresu IP, odporny na otwieranie nowych sesji; domyślnie włączony.
+- limity dobowe, na autora, pinezkę, całą instalację i kopie — ostrożne skończone wartości domyślne zapobiegają nieograniczonemu zapisowi i można je zwiększyć dla większej instalacji.
 - `NOTIFICATIONS_ENABLED` — włącza ręczne powiadomienia e-mail. Wiadomości korzystają z natywnego transportu PHP `mail()` serwera; ReviewLayer nie przechowuje danych logowania SMTP.
-- `NOTIFICATION_FROM_EMAIL` — opcjonalny stały nadawca. Gdy jest pusty, ReviewLayer wyprowadza `reviewlayer@bieżący-host`; ustaw istniejący adres w tej samej domenie, jeśli wymaga tego hosting.
-- `NOTIFICATION_PUBLIC_BASE_URL` — opcjonalny pełny URL katalogu ReviewLayer dla linków potwierdzających. Pozostaw pusty dla kopii instalowanych w różnych domenach prototypów.
+- `NOTIFICATION_FROM_EMAIL` — opcjonalny stały nadawca. Gdy jest pusty, ReviewLayer wyprowadza domenę nadawcy z `NOTIFICATION_PUBLIC_BASE_URL`; ustaw istniejący adres w tej samej domenie, jeśli wymaga tego hosting.
+- `NOTIFICATION_PUBLIC_BASE_URL` — zaufany pełny URL katalogu ReviewLayer używany w linkach potwierdzających. Gdy pozostaje pusty, e-maile są niedostępne, ale pinezki i komentarze działają bez zmian.
 - limity czasowe, godzinowe i dzienne powiadomień oraz weryfikacji — trwała ochrona przed nadużyciami, niezależna od sesji przeglądarki.
 - limity tekstu i okno rate limitingu.
 
@@ -152,7 +154,7 @@ Zwykłe usuwanie pinezki lub wiadomości ustawia `deleted_at` (soft delete). Poj
 https://prototype.example.com/?reviewlayer=clear
 ```
 
-Samo żądanie GET niczego nie usuwa. Panel wymaga zakresu, trybu i frazy `DELETE`; kod administratora jest wymagany tylko wtedy, gdy został skonfigurowany. Dla całej instalacji obowiązuje dokładna fraza `DELETE ALL REVIEWLAYER DATA`. Po zamknięciu parametr jest usuwany z adresu.
+Samo żądanie GET niczego nie usuwa. Panel wymaga zakresu, trybu, frazy `DELETE` i skonfigurowanego kodu administratora. Dla całej instalacji obowiązuje dokładna fraza `DELETE ALL REVIEWLAYER DATA`. Po zamknięciu parametr jest usuwany z adresu.
 
 Zakresy:
 
@@ -165,7 +167,7 @@ Soft delete zachowuje historię. Permanent purge fizycznie usuwa rekordy. Trwał
 
 ## Backup i przywracanie
 
-W panelu „Ustawienia” znajduje się osobna sekcja „Kopia zapasowa”. Przycisk „Utwórz kopię teraz” zapisuje pełny eksport wszystkich projektów w `data/backups/` bez usuwania lub zmieniania danych. Jeśli kod administratora został skonfigurowany, aplikacja poprosi o niego przed wykonaniem kopii.
+W panelu „Ustawienia” znajduje się osobna sekcja „Kopia zapasowa”. Przycisk „Utwórz kopię teraz” zapisuje pełny eksport wszystkich projektów w `data/backups/` bez usuwania lub zmieniania danych. Operacja jest dostępna dopiero po skonfigurowaniu kodu administratora.
 
 Przy `CREATE_BACKUP_BEFORE_PURGE = true` trwałe czyszczenie najpierw zapisuje przenośny JSON w `data/backups/`. Zawiera wersję formatu, projekty i liczniki, role i kolory komentujących, adresatów pinezek, pinezki, wiadomości, statusy, daty, kotwiczenie, viewport i dane przeglądarki. Kontakty powiadomień są wyłączone, ponieważ wymagają klucza szyfrującego konkretnej instalacji. Jeśli backup zawiedzie, purge jest blokowany, chyba że administrator jawnie zaznaczy kontynuację bez kopii.
 
@@ -185,7 +187,7 @@ Bez SQLite używany jest `data/reviewlayer.json`, osobny plik blokady i `data/ad
 
 ## Ochrona danych
 
-Dołączone `.htaccess` wyłącza listing i blokuje pobieranie `data/` oraz backupów. W Nginx/IIS trzeba odtworzyć tę regułę, np. zwrócić `403` dla `/reviewlayer/data/`. Sprawdź to z zewnątrz, próbując pobrać nazwę testowego pliku — odpowiedź nie może zawierać danych.
+Dołączone `.htaccess` wyłącza listing i blokuje pobieranie `data/` oraz backupów. W Nginx/IIS trzeba odtworzyć tę regułę, np. zwrócić `403` dla `/reviewlayer/data/`. Najmocniejszy wariant niezależny od serwera to ustawienie `DATA_DIRECTORY` na zapisywalny katalog bezwzględny poza document root; storage, powiadomienia, rate limiting, backup, restore i czyszczenie demo używają tej samej ścieżki. Sprawdź ochronę z zewnątrz, próbując pobrać nazwę testowego pliku — odpowiedź nie może zawierać danych.
 
 API stosuje walidację, prepared statements, UUID v4, limity, CSRF oparty o sesję, kontrolę Origin, rate limiting, soft delete i porównanie kodów przez `hash_equals` oraz spójne odpowiedzi JSON. To zabezpieczenia odpowiednie dla prototypu, nie zamiennik pełnego systemu kont i audytu dla danych wrażliwych. `noindex, nofollow` ogranicza indeksowanie, ale nie stanowi kontroli dostępu.
 

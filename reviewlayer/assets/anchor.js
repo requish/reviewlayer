@@ -1,5 +1,29 @@
 const RANDOM_CLASS_PATTERN = /(?:^|[-_])(?:[a-f0-9]{7,}|[a-z0-9]{10,})(?:$|[-_])/i;
 const STABLE_DATA_NAMES = ['data-review-id', 'data-testid', 'data-test', 'data-cy', 'data-component'];
+const MAX_FINGERPRINT_TAG_CANDIDATES = 250;
+
+function isSupportedStoredSelector(selector) {
+  if (typeof selector !== 'string' || selector.length < 1 || selector.length > 2048 || /[\u0000-\u001f\u007f]/.test(selector)) {
+    return false;
+  }
+  const plain = selector.replace(/\\(?:[0-9a-fA-F]{1,6}\s?|.)/g, '');
+  const withoutGeneratedPseudo = plain.replace(/:nth-of-type\([1-9][0-9]{0,5}\)/gi, '');
+  return !/[*,+~:]/.test(withoutGeneratedPseudo)
+    && (withoutGeneratedPseudo.match(/>/g) || []).length <= 8;
+}
+
+function queryStoredSelector(selector) {
+  if (!isSupportedStoredSelector(selector)) return null;
+  try {
+    return document.querySelector(selector);
+  } catch {
+    return null;
+  }
+}
+
+function isSupportedTagName(value) {
+  return typeof value === 'string' && /^[a-z][a-z0-9-]{0,63}$/i.test(value);
+}
 
 function cssEscape(value) {
   if (window.CSS?.escape) {
@@ -131,18 +155,24 @@ export function createFingerprint(element) {
 }
 
 function similarity(candidate, fingerprint) {
-  if (!candidate || candidate.localName !== fingerprint.tag) return -1;
+  if (!candidate || !fingerprint || typeof fingerprint !== 'object' || candidate.localName !== fingerprint.tag) return -1;
   let score = 3;
-  if (fingerprint.id && candidate.id === fingerprint.id) score += 8;
+  if (typeof fingerprint.id === 'string' && fingerprint.id && candidate.id === fingerprint.id) score += 8;
 
-  for (const className of fingerprint.classes || []) {
+  const classes = Array.isArray(fingerprint.classes) ? fingerprint.classes.slice(0, 3) : [];
+  for (const className of classes) {
+    if (typeof className !== 'string') continue;
     if (candidate.classList.contains(className)) score += 2;
   }
-  for (const [name, value] of Object.entries(fingerprint.attributes || {})) {
+  const attributes = fingerprint.attributes && typeof fingerprint.attributes === 'object' && !Array.isArray(fingerprint.attributes)
+    ? Object.entries(fingerprint.attributes).slice(0, 9)
+    : [];
+  for (const [name, value] of attributes) {
+    if (typeof value !== 'string') continue;
     if (candidate.getAttribute(name) === value) score += 4;
   }
 
-  const sourceText = fingerprint.text || '';
+  const sourceText = typeof fingerprint.text === 'string' ? fingerprint.text.slice(0, 160) : '';
   const candidateText = textSample(candidate);
   if (sourceText && candidateText) {
     if (candidateText === sourceText) score += 5;
@@ -150,7 +180,7 @@ function similarity(candidate, fingerprint) {
   }
 
   const siblings = candidate.parentElement ? [...candidate.parentElement.children] : [];
-  if (siblings.indexOf(candidate) === fingerprint.sibling_index) score += 1;
+  if (Number.isInteger(fingerprint.sibling_index) && siblings.indexOf(candidate) === fingerprint.sibling_index) score += 1;
   return score;
 }
 
@@ -314,26 +344,9 @@ export function createAnchorResolver() {
       }
 
       const fingerprint = pin.target_fingerprint || {};
-      let candidates = [];
-      try {
-        if (pin.target_selector) {
-          candidates = [...document.querySelectorAll(pin.target_selector)];
-        }
-      } catch {
-        candidates = [];
-      }
-
-      let bestElement = null;
-      let bestScore = -1;
-      for (const candidate of candidates) {
-        const score = similarity(candidate, fingerprint);
-        if (score > bestScore) {
-          bestElement = candidate;
-          bestScore = score;
-        }
-      }
-
-      const exactSelectorMatch = bestElement && (candidates.length === 1 || bestScore >= 6);
+      let bestElement = queryStoredSelector(pin.target_selector);
+      let bestScore = similarity(bestElement, fingerprint);
+      const exactSelectorMatch = bestElement && bestScore >= 6;
       if (exactSelectorMatch) {
         const uncertain = bestScore < 6;
         rememberInteractionTrigger(pin, bestElement);
@@ -344,19 +357,26 @@ export function createAnchorResolver() {
       bestElement = null;
       bestScore = -1;
 
-      if (fingerprint.id) {
+      if (typeof fingerprint.id === 'string' && fingerprint.id) {
         bestElement = document.getElementById(fingerprint.id);
         bestScore = similarity(bestElement, fingerprint);
       }
 
-      if (!bestElement && fingerprint.tag) {
-        const limitedCandidates = [...document.querySelectorAll(fingerprint.tag)].slice(0, 250);
-        for (const candidate of limitedCandidates) {
-          const score = similarity(candidate, fingerprint);
-          if (score > bestScore) {
-            bestElement = candidate;
-            bestScore = score;
+      if (!bestElement && isSupportedTagName(fingerprint.tag)) {
+        try {
+          const candidates = document.getElementsByTagName(fingerprint.tag);
+          const candidateCount = Math.min(candidates.length, MAX_FINGERPRINT_TAG_CANDIDATES);
+          for (let index = 0; index < candidateCount; index += 1) {
+            const candidate = candidates.item(index);
+            const score = similarity(candidate, fingerprint);
+            if (score > bestScore) {
+              bestElement = candidate;
+              bestScore = score;
+            }
           }
+        } catch {
+          bestElement = null;
+          bestScore = -1;
         }
       }
 
@@ -397,26 +417,10 @@ function positionHiddenAnchor(ancestorRect, exactX, exactY, uncertain) {
 
 function resolveStoredElement(reference) {
   if (!reference || typeof reference.selector !== 'string') return null;
-
-  let candidates = [];
-  try {
-    candidates = [...document.querySelectorAll(reference.selector)];
-  } catch {
-    return null;
-  }
-  if (candidates.length === 1) return candidates[0];
-
+  const candidate = queryStoredSelector(reference.selector);
+  if (!candidate) return null;
   const fingerprint = reference.target_fingerprint || {};
-  let bestElement = null;
-  let bestScore = -1;
-  for (const candidate of candidates) {
-    const score = similarity(candidate, fingerprint);
-    if (score > bestScore) {
-      bestElement = candidate;
-      bestScore = score;
-    }
-  }
-  return bestScore >= 6 ? bestElement : null;
+  return similarity(candidate, fingerprint) >= 6 ? candidate : null;
 }
 
 function resolveFallbackPoint(anchor) {
